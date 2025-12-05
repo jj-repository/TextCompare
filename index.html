@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TextCompare - Text Diff Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header / Toolbar */
+        .toolbar {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #404040;
+            flex-wrap: wrap;
+        }
+
+        .toolbar h1 {
+            font-size: 1.2rem;
+            color: #569cd6;
+            margin-right: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #0e639c;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1177bb;
+        }
+
+        .btn-secondary {
+            background: #3c3c3c;
+            color: #d4d4d4;
+        }
+
+        .btn-secondary:hover {
+            background: #4c4c4c;
+        }
+
+        .btn-success {
+            background: #388a34;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a540;
+        }
+
+        .btn-danger {
+            background: #c42b1c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e03e2f;
+        }
+
+        .btn-nav {
+            background: #4d4d4d;
+            color: #d4d4d4;
+            padding: 8px 12px;
+        }
+
+        .btn-nav:hover {
+            background: #5a5a5a;
+        }
+
+        .btn-nav:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .separator {
+            width: 1px;
+            height: 30px;
+            background: #404040;
+            margin: 0 10px;
+        }
+
+        .diff-counter {
+            background: #3c3c3c;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #9cdcfe;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #404040;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .panel-header {
+            background: #252526;
+            padding: 8px 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #404040;
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            color: #9cdcfe;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filename {
+            color: #ce9178;
+            font-style: italic;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .panel-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            padding: 4px 10px;
+            font-size: 0.8rem;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .line-numbers {
+            background: #1e1e1e;
+            color: #858585;
+            padding: 10px 8px;
+            text-align: right;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            user-select: none;
+            overflow: hidden;
+            min-width: 40px;
+            max-width: 60px;
+            width: 60px;
+            flex-shrink: 0;
+            border-right: 1px solid #404040;
+        }
+
+        .line-numbers.hidden {
+            display: none;
+        }
+
+        .text-input {
+            flex: 1;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+        }
+
+        .text-input::placeholder {
+            color: #6a6a6a;
+        }
+
+        .diff-view {
+            flex: 1;
+            background: #1e1e1e;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .diff-line {
+            min-height: 21px;
+            padding: 0 4px;
+            border-radius: 2px;
+        }
+
+        .diff-line.added {
+            background: rgba(35, 134, 54, 0.2);
+        }
+
+        .diff-line.removed {
+            background: rgba(218, 54, 51, 0.2);
+        }
+
+        .diff-line.modified {
+            background: rgba(227, 180, 72, 0.15);
+        }
+
+        .diff-line.current {
+            outline: 2px solid #569cd6;
+        }
+
+        .diff-char-added {
+            background: rgba(35, 134, 54, 0.4);
+            color: #7ee787;
+        }
+
+        .diff-char-removed {
+            background: rgba(218, 54, 51, 0.4);
+            color: #ff7b72;
+            text-decoration: line-through;
+        }
+
+        .diff-char-changed {
+            background: rgba(218, 54, 51, 0.5);
+            color: #ff6b6b;
+            text-decoration: underline;
+            text-decoration-color: #ff4444;
+            text-decoration-thickness: 2px;
+        }
+
+        /* Thumbnail / Mini-map */
+        .minimap {
+            width: 30px;
+            background: #252526;
+            border-left: 1px solid #404040;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .minimap-marker {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .minimap-marker.added {
+            background: #238636;
+        }
+
+        .minimap-marker.removed {
+            background: #da3633;
+        }
+
+        .minimap-marker.modified {
+            background: #e3b448;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: #007acc;
+            color: white;
+            padding: 4px 15px;
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Hidden file input */
+        .hidden {
+            display: none;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid #404040;
+        }
+
+        .modal h2 {
+            margin-bottom: 15px;
+            color: #569cd6;
+        }
+
+        .modal p {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 15px;
+            font-size: 0.8rem;
+            margin-left: auto;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+        }
+
+        .legend-color.added {
+            background: rgba(35, 134, 54, 0.6);
+        }
+
+        .legend-color.removed {
+            background: rgba(218, 54, 51, 0.6);
+        }
+
+        .legend-color.changed {
+            background: rgba(218, 54, 51, 0.8);
+            text-decoration: underline;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4f4f4f;
+        }
+
+        /* Options panel */
+        .options-panel {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .checkbox-label input {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>TextCompare</h1>
+
+        <button class="btn btn-success" onclick="compare()" title="Compare texts (Ctrl+Enter)">
+            <span>Compare</span>
+        </button>
+
+        <div class="separator"></div>
+
+        <button class="btn btn-nav" onclick="prevDiff()" id="btnPrev" disabled title="Previous difference (Ctrl+Up)">
+            <span>Prev</span>
+        </button>
+        <span class="diff-counter" id="diffCounter">0 / 0</span>
+        <button class="btn btn-nav" onclick="nextDiff()" id="btnNext" disabled title="Next difference (Ctrl+Down)">
+            <span>Next</span>
+        </button>
+
+        <div class="separator"></div>
+
+        <div class="options-panel">
+            <label class="checkbox-label">
+                <input type="checkbox" id="ignoreWhitespace">
+                Ignore whitespace
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="ignoreCase">
+                Ignore case
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="showLineNumbers" checked>
+                Line numbers
+            </label>
+        </div>
+
+        <div class="separator"></div>
+
+        <button class="btn btn-secondary" onclick="swapPanels()" title="Swap left and right">
+            <span>Swap</span>
+        </button>
+
+        <button class="btn btn-danger" onclick="clearAll()" title="Clear all">
+            <span>Clear All</span>
+        </button>
+
+        <button class="btn btn-secondary" onclick="showHelp()" title="Help">
+            <span>?</span>
+        </button>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color added"></div>
+                <span>Added</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color removed"></div>
+                <span>Removed</span>
+            </div>
+            <div class="legend-item">
+                <span style="color: #ff6b6b; text-decoration: underline red 2px;">Changed</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Left Panel -->
+        <div class="panel" id="leftPanel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span>Left (Original)</span>
+                    <span class="filename" id="leftFilename">No file loaded</span>
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary btn-small" onclick="loadFile('left')">Load</button>
+                    <button class="btn btn-success btn-small" onclick="saveFile('left')" title="Save file (Ctrl+Shift+S)">Save</button>
+                    <button class="btn btn-secondary btn-small" onclick="clearPanel('left')">Clear</button>
+                </div>
+            </div>
+            <div class="editor-container">
+                <div class="line-numbers" id="leftLineNumbers">1</div>
+                <textarea class="text-input" id="leftText" placeholder="Paste or load text here..."></textarea>
+                <div class="diff-view hidden" id="leftDiff"></div>
+                <div class="minimap" id="leftMinimap"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="panel" id="rightPanel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span>Right (Modified)</span>
+                    <span class="filename" id="rightFilename">No file loaded</span>
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary btn-small" onclick="loadFile('right')">Load</button>
+                    <button class="btn btn-success btn-small" onclick="saveFile('right')" title="Save file (Ctrl+S)">Save</button>
+                    <button class="btn btn-secondary btn-small" onclick="clearPanel('right')">Clear</button>
+                </div>
+            </div>
+            <div class="editor-container">
+                <div class="line-numbers" id="rightLineNumbers">1</div>
+                <textarea class="text-input" id="rightText" placeholder="Paste or load text here..."></textarea>
+                <div class="diff-view hidden" id="rightDiff"></div>
+                <div class="minimap" id="rightMinimap"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span id="statusLeft">Left: 0 lines, 0 characters</span>
+        <span id="statusCenter">Ready</span>
+        <span id="statusRight">Right: 0 lines, 0 characters</span>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="leftFileInput" class="hidden" accept=".txt,.md,.json,.xml,.html,.css,.js,.py,.java,.c,.cpp,.h,.csv,.log,.ini,.cfg,.yaml,.yml,*">
+    <input type="file" id="rightFileInput" class="hidden" accept=".txt,.md,.json,.xml,.html,.css,.js,.py,.java,.c,.cpp,.h,.csv,.log,.ini,.cfg,.yaml,.yml,*">
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal">
+            <h2>TextCompare - Help</h2>
+            <p><strong>How to use:</strong></p>
+            <p>1. Load or paste text into both panels</p>
+            <p>2. Click "Compare" to see differences</p>
+            <p>3. Use Prev/Next to navigate between changes</p>
+            <p><strong>Keyboard shortcuts:</strong></p>
+            <p>- <kbd>Ctrl+Enter</kbd> - Compare</p>
+            <p>- <kbd>Ctrl+Up</kbd> - Previous difference</p>
+            <p>- <kbd>Ctrl+Down</kbd> - Next difference</p>
+            <p>- <kbd>Ctrl+S</kbd> - Save right file</p>
+            <p>- <kbd>Ctrl+Shift+S</kbd> - Save left file</p>
+            <p><strong>Color coding:</strong></p>
+            <p>- <span style="color: #7ee787;">Green</span> - Added lines/text</p>
+            <p>- <span style="color: #ff7b72;">Red</span> - Removed lines/text</p>
+            <p>- <span style="color: #ff6b6b; text-decoration: underline red;">Red underline</span> - Changed characters</p>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="closeHelp()">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let differences = [];
+        let currentDiffIndex = -1;
+        let isCompareMode = false;
+
+        // DOM Elements
+        const leftText = document.getElementById('leftText');
+        const rightText = document.getElementById('rightText');
+        const leftDiff = document.getElementById('leftDiff');
+        const rightDiff = document.getElementById('rightDiff');
+        const leftLineNumbers = document.getElementById('leftLineNumbers');
+        const rightLineNumbers = document.getElementById('rightLineNumbers');
+        const leftFileInput = document.getElementById('leftFileInput');
+        const rightFileInput = document.getElementById('rightFileInput');
+        const diffCounter = document.getElementById('diffCounter');
+        const btnPrev = document.getElementById('btnPrev');
+        const btnNext = document.getElementById('btnNext');
+
+        // Initialize
+        function init() {
+            // Update line numbers on input
+            leftText.addEventListener('input', () => {
+                updateLineNumbers('left');
+                updateStatus();
+                if (isCompareMode) exitCompareMode();
+            });
+            rightText.addEventListener('input', () => {
+                updateLineNumbers('right');
+                updateStatus();
+                if (isCompareMode) exitCompareMode();
+            });
+
+            // Sync scroll
+            leftText.addEventListener('scroll', () => syncScroll('left'));
+            rightText.addEventListener('scroll', () => syncScroll('right'));
+            leftDiff.addEventListener('scroll', () => syncScrollDiff('left'));
+            rightDiff.addEventListener('scroll', () => syncScrollDiff('right'));
+
+            // File input handlers
+            leftFileInput.addEventListener('change', (e) => handleFileLoad(e, 'left'));
+            rightFileInput.addEventListener('change', (e) => handleFileLoad(e, 'right'));
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', handleKeyboard);
+
+            // Line numbers toggle
+            document.getElementById('showLineNumbers').addEventListener('change', toggleLineNumbers);
+
+            updateStatus();
+        }
+
+        // Toggle line numbers visibility
+        function toggleLineNumbers() {
+            const showLineNumbers = document.getElementById('showLineNumbers').checked;
+            document.getElementById('leftLineNumbers').classList.toggle('hidden', !showLineNumbers);
+            document.getElementById('rightLineNumbers').classList.toggle('hidden', !showLineNumbers);
+        }
+
+        // Line numbers
+        function updateLineNumbers(side) {
+            const text = side === 'left' ? leftText : rightText;
+            const lineNums = side === 'left' ? leftLineNumbers : rightLineNumbers;
+            const lines = text.value.split('\n').length;
+            lineNums.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('\n');
+        }
+
+        // Scroll sync
+        function syncScroll(source) {
+            if (isCompareMode) return;
+            const sourceEl = source === 'left' ? leftText : rightText;
+            const targetEl = source === 'left' ? rightText : leftText;
+            const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
+            const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
+
+            targetEl.scrollTop = sourceEl.scrollTop;
+            sourceLines.scrollTop = sourceEl.scrollTop;
+            targetLines.scrollTop = sourceEl.scrollTop;
+        }
+
+        function syncScrollDiff(source) {
+            if (!isCompareMode) return;
+            const sourceEl = source === 'left' ? leftDiff : rightDiff;
+            const targetEl = source === 'left' ? rightDiff : leftDiff;
+            const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
+            const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
+
+            targetEl.scrollTop = sourceEl.scrollTop;
+            sourceLines.scrollTop = sourceEl.scrollTop;
+            targetLines.scrollTop = sourceEl.scrollTop;
+        }
+
+        // File loading
+        function loadFile(side) {
+            const input = side === 'left' ? leftFileInput : rightFileInput;
+            input.click();
+        }
+
+        function handleFileLoad(event, side) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                if (side === 'left') {
+                    leftText.value = text;
+                    document.getElementById('leftFilename').textContent = file.name;
+                } else {
+                    rightText.value = text;
+                    document.getElementById('rightFilename').textContent = file.name;
+                }
+                updateLineNumbers(side);
+                updateStatus();
+                if (isCompareMode) exitCompareMode();
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Save file
+        function saveFile(side) {
+            const text = side === 'left' ? leftText.value : rightText.value;
+            const filenameEl = document.getElementById(side === 'left' ? 'leftFilename' : 'rightFilename');
+            let filename = filenameEl.textContent;
+
+            // Generate default filename if none loaded
+            if (filename === 'No file loaded' || !filename) {
+                filename = side === 'left' ? 'left_text.txt' : 'right_text.txt';
+            }
+
+            // Prompt for filename
+            const newFilename = prompt('Save as:', filename);
+            if (!newFilename) return; // User cancelled
+
+            // Create blob and download
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = newFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            // Update filename display
+            filenameEl.textContent = newFilename;
+            document.getElementById('statusCenter').textContent = `Saved: ${newFilename}`;
+        }
+
+        // Clear functions
+        function clearPanel(side) {
+            if (side === 'left') {
+                leftText.value = '';
+                document.getElementById('leftFilename').textContent = 'No file loaded';
+            } else {
+                rightText.value = '';
+                document.getElementById('rightFilename').textContent = 'No file loaded';
+            }
+            updateLineNumbers(side);
+            updateStatus();
+            if (isCompareMode) exitCompareMode();
+        }
+
+        function clearAll() {
+            clearPanel('left');
+            clearPanel('right');
+        }
+
+        // Swap panels
+        function swapPanels() {
+            const tempText = leftText.value;
+            const tempFilename = document.getElementById('leftFilename').textContent;
+
+            leftText.value = rightText.value;
+            document.getElementById('leftFilename').textContent = document.getElementById('rightFilename').textContent;
+
+            rightText.value = tempText;
+            document.getElementById('rightFilename').textContent = tempFilename;
+
+            updateLineNumbers('left');
+            updateLineNumbers('right');
+            updateStatus();
+            if (isCompareMode) compare();
+        }
+
+        // Status bar
+        function updateStatus() {
+            const leftLines = leftText.value ? leftText.value.split('\n').length : 0;
+            const leftChars = leftText.value.length;
+            const rightLines = rightText.value ? rightText.value.split('\n').length : 0;
+            const rightChars = rightText.value.length;
+
+            document.getElementById('statusLeft').textContent = `Left: ${leftLines} lines, ${leftChars} characters`;
+            document.getElementById('statusRight').textContent = `Right: ${rightLines} lines, ${rightChars} characters`;
+        }
+
+        // LCS-based diff algorithm
+        function computeLCS(a, b) {
+            const m = a.length, n = b.length;
+            const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+            for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                    if (a[i - 1] === b[j - 1]) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                    } else {
+                        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                    }
+                }
+            }
+            return dp;
+        }
+
+        function backtrackLCS(dp, a, b, i, j) {
+            const result = [];
+            while (i > 0 && j > 0) {
+                if (a[i - 1] === b[j - 1]) {
+                    result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
+                    i--; j--;
+                } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                    i--;
+                } else {
+                    j--;
+                }
+            }
+            return result;
+        }
+
+        function diffLines(leftLines, rightLines) {
+            const ignoreWhitespace = document.getElementById('ignoreWhitespace').checked;
+            const ignoreCase = document.getElementById('ignoreCase').checked;
+
+            const processLine = (line) => {
+                let processed = line;
+                if (ignoreWhitespace) processed = processed.replace(/\s+/g, ' ').trim();
+                if (ignoreCase) processed = processed.toLowerCase();
+                return processed;
+            };
+
+            const leftProcessed = leftLines.map(processLine);
+            const rightProcessed = rightLines.map(processLine);
+
+            const dp = computeLCS(leftProcessed, rightProcessed);
+            const lcs = backtrackLCS(dp, leftProcessed, rightProcessed, leftLines.length, rightLines.length);
+
+            const result = [];
+            let li = 0, ri = 0, lcsIdx = 0;
+
+            while (li < leftLines.length || ri < rightLines.length) {
+                if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
+                    // Check if lines are actually equal (considering original case/whitespace)
+                    if (leftLines[li] === rightLines[ri]) {
+                        result.push({ type: 'equal', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                    } else {
+                        result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                    }
+                    li++; ri++; lcsIdx++;
+                } else if (lcsIdx < lcs.length && li < lcs[lcsIdx].left && ri < lcs[lcsIdx].right) {
+                    // Both have content before next match - could be modifications
+                    result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                    li++; ri++;
+                } else if (li < leftLines.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
+                    result.push({ type: 'removed', leftLine: li, left: leftLines[li] });
+                    li++;
+                } else if (ri < rightLines.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
+                    result.push({ type: 'added', rightLine: ri, right: rightLines[ri] });
+                    ri++;
+                }
+            }
+
+            return result;
+        }
+
+        function diffChars(left, right) {
+            if (!left || !right) return { left: left || '', right: right || '' };
+
+            const dp = computeLCS(left.split(''), right.split(''));
+            const lcs = backtrackLCS(dp, left.split(''), right.split(''), left.length, right.length);
+
+            let leftHtml = '', rightHtml = '';
+            let li = 0, ri = 0, lcsIdx = 0;
+
+            while (li < left.length || ri < right.length) {
+                if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
+                    leftHtml += escapeHtml(left[li]);
+                    rightHtml += escapeHtml(right[ri]);
+                    li++; ri++; lcsIdx++;
+                } else {
+                    let leftChunk = '', rightChunk = '';
+                    while (li < left.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
+                        leftChunk += left[li++];
+                    }
+                    while (ri < right.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
+                        rightChunk += right[ri++];
+                    }
+                    if (leftChunk) {
+                        leftHtml += `<span class="diff-char-changed">${escapeHtml(leftChunk)}</span>`;
+                    }
+                    if (rightChunk) {
+                        rightHtml += `<span class="diff-char-changed">${escapeHtml(rightChunk)}</span>`;
+                    }
+                }
+            }
+
+            return { left: leftHtml, right: rightHtml };
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Main compare function
+        function compare() {
+            const leftLines = leftText.value.split('\n');
+            const rightLines = rightText.value.split('\n');
+
+            const diff = diffLines(leftLines, rightLines);
+            differences = [];
+            currentDiffIndex = -1;
+
+            let leftHtml = '', rightHtml = '';
+            let leftLineNums = '', rightLineNums = '';
+            let leftLineNum = 0, rightLineNum = 0;
+
+            diff.forEach((d, idx) => {
+                let diffIdx = -1;
+
+                if (d.type === 'equal') {
+                    leftLineNum++;
+                    rightLineNum++;
+                    leftHtml += `<div class="diff-line">${escapeHtml(d.left) || '&nbsp;'}</div>`;
+                    rightHtml += `<div class="diff-line">${escapeHtml(d.right) || '&nbsp;'}</div>`;
+                    leftLineNums += leftLineNum + '\n';
+                    rightLineNums += rightLineNum + '\n';
+                } else if (d.type === 'modified') {
+                    leftLineNum++;
+                    rightLineNum++;
+                    diffIdx = differences.length;
+                    differences.push({ leftLine: leftLineNum, rightLine: rightLineNum, type: 'modified' });
+
+                    const charDiff = diffChars(d.left, d.right);
+                    leftHtml += `<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.left || '&nbsp;'}</div>`;
+                    rightHtml += `<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.right || '&nbsp;'}</div>`;
+                    leftLineNums += leftLineNum + '\n';
+                    rightLineNums += rightLineNum + '\n';
+                } else if (d.type === 'removed') {
+                    leftLineNum++;
+                    diffIdx = differences.length;
+                    differences.push({ leftLine: leftLineNum, type: 'removed' });
+
+                    leftHtml += `<div class="diff-line removed" data-diff="${diffIdx}">${escapeHtml(d.left) || '&nbsp;'}</div>`;
+                    rightHtml += `<div class="diff-line removed" data-diff="${diffIdx}">&nbsp;</div>`;
+                    leftLineNums += leftLineNum + '\n';
+                    rightLineNums += '-\n';
+                } else if (d.type === 'added') {
+                    rightLineNum++;
+                    diffIdx = differences.length;
+                    differences.push({ rightLine: rightLineNum, type: 'added' });
+
+                    leftHtml += `<div class="diff-line added" data-diff="${diffIdx}">&nbsp;</div>`;
+                    rightHtml += `<div class="diff-line added" data-diff="${diffIdx}">${escapeHtml(d.right) || '&nbsp;'}</div>`;
+                    leftLineNums += '-\n';
+                    rightLineNums += rightLineNum + '\n';
+                }
+            });
+
+            // Update UI
+            leftDiff.innerHTML = leftHtml;
+            rightDiff.innerHTML = rightHtml;
+            leftLineNumbers.innerHTML = leftLineNums.trim();
+            rightLineNumbers.innerHTML = rightLineNums.trim();
+
+            // Show diff views
+            leftText.classList.add('hidden');
+            rightText.classList.add('hidden');
+            leftDiff.classList.remove('hidden');
+            rightDiff.classList.remove('hidden');
+
+            isCompareMode = true;
+            updateDiffCounter();
+            updateMinimap();
+
+            document.getElementById('statusCenter').textContent = `Found ${differences.length} difference${differences.length !== 1 ? 's' : ''}`;
+
+            // Navigate to first diff if exists
+            if (differences.length > 0) {
+                currentDiffIndex = 0;
+                highlightCurrentDiff();
+            }
+        }
+
+        function exitCompareMode() {
+            isCompareMode = false;
+            leftText.classList.remove('hidden');
+            rightText.classList.remove('hidden');
+            leftDiff.classList.add('hidden');
+            rightDiff.classList.add('hidden');
+
+            updateLineNumbers('left');
+            updateLineNumbers('right');
+
+            differences = [];
+            currentDiffIndex = -1;
+            updateDiffCounter();
+            clearMinimap();
+
+            document.getElementById('statusCenter').textContent = 'Ready';
+        }
+
+        // Navigation
+        function updateDiffCounter() {
+            const current = currentDiffIndex >= 0 ? currentDiffIndex + 1 : 0;
+            diffCounter.textContent = `${current} / ${differences.length}`;
+            btnPrev.disabled = differences.length === 0 || currentDiffIndex <= 0;
+            btnNext.disabled = differences.length === 0 || currentDiffIndex >= differences.length - 1;
+        }
+
+        function highlightCurrentDiff() {
+            // Remove previous highlight
+            document.querySelectorAll('.diff-line.current').forEach(el => el.classList.remove('current'));
+
+            if (currentDiffIndex < 0 || currentDiffIndex >= differences.length) return;
+
+            // Add highlight to current diff
+            const diffLines = document.querySelectorAll(`[data-diff="${currentDiffIndex}"]`);
+            diffLines.forEach(el => {
+                el.classList.add('current');
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+
+            updateDiffCounter();
+        }
+
+        function prevDiff() {
+            if (currentDiffIndex > 0) {
+                currentDiffIndex--;
+                highlightCurrentDiff();
+            }
+        }
+
+        function nextDiff() {
+            if (currentDiffIndex < differences.length - 1) {
+                currentDiffIndex++;
+                highlightCurrentDiff();
+            }
+        }
+
+        // Minimap
+        function updateMinimap() {
+            const leftMinimap = document.getElementById('leftMinimap');
+            const rightMinimap = document.getElementById('rightMinimap');
+
+            leftMinimap.innerHTML = '';
+            rightMinimap.innerHTML = '';
+
+            const totalLines = Math.max(
+                leftDiff.querySelectorAll('.diff-line').length,
+                rightDiff.querySelectorAll('.diff-line').length
+            );
+
+            if (totalLines === 0) return;
+
+            const minimapHeight = leftMinimap.offsetHeight;
+
+            differences.forEach((diff, idx) => {
+                const lineNum = diff.leftLine || diff.rightLine || 1;
+                const position = (lineNum / totalLines) * 100;
+
+                const marker = document.createElement('div');
+                marker.className = `minimap-marker ${diff.type}`;
+                marker.style.top = `${position}%`;
+                marker.onclick = () => {
+                    currentDiffIndex = idx;
+                    highlightCurrentDiff();
+                };
+
+                leftMinimap.appendChild(marker.cloneNode(true));
+                rightMinimap.appendChild(marker);
+            });
+        }
+
+        function clearMinimap() {
+            document.getElementById('leftMinimap').innerHTML = '';
+            document.getElementById('rightMinimap').innerHTML = '';
+        }
+
+        // Help modal
+        function showHelp() {
+            document.getElementById('helpModal').classList.add('active');
+        }
+
+        function closeHelp() {
+            document.getElementById('helpModal').classList.remove('active');
+        }
+
+        // Keyboard shortcuts
+        function handleKeyboard(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                compare();
+            } else if (e.ctrlKey && e.key === 'ArrowUp') {
+                e.preventDefault();
+                prevDiff();
+            } else if (e.ctrlKey && e.key === 'ArrowDown') {
+                e.preventDefault();
+                nextDiff();
+            } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                saveFile('left');
+            } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                saveFile('right');
+            } else if (e.key === 'Escape') {
+                closeHelp();
+                if (isCompareMode) exitCompareMode();
+            }
+        }
+
+        // Close modal on overlay click
+        document.getElementById('helpModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeHelp();
+            }
+        });
+
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>
