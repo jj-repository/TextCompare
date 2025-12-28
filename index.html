@@ -1,4 +1,26 @@
 <!DOCTYPE html>
+<!--
+    TextCompare - Text Diff Tool
+
+    A web-based text comparison tool that highlights differences between two text files.
+
+    Features:
+    - Side-by-side diff view with color-coded changes
+    - Line-level and character-level difference highlighting
+    - Navigation between differences with keyboard shortcuts
+    - File loading and saving capabilities
+    - Minimap for quick navigation
+    - Customizable comparison options (ignore whitespace, ignore case)
+
+    Browser Requirements:
+    - Modern browsers with ES6 support (Chrome 51+, Firefox 54+, Safari 10+, Edge 15+)
+    - FileReader API and CSS Flexbox support required
+
+    Limitations:
+    - Recommended file size limit: 10MB
+    - Large files may cause browser performance issues
+    - All processing is done client-side (no server uploads)
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -248,17 +270,6 @@
             outline: 2px solid #569cd6;
         }
 
-        .diff-char-added {
-            background: rgba(35, 134, 54, 0.4);
-            color: #7ee787;
-        }
-
-        .diff-char-removed {
-            background: rgba(218, 54, 51, 0.4);
-            color: #ff7b72;
-            text-decoration: line-through;
-        }
-
         .diff-char-changed {
             background: rgba(218, 54, 51, 0.5);
             color: #ff6b6b;
@@ -387,6 +398,47 @@
             text-decoration: underline;
         }
 
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            background: #2d2d2d;
+            padding: 30px 40px;
+            border-radius: 8px;
+            border: 1px solid #404040;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #404040;
+            border-top: 4px solid #569cd6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 10px;
@@ -424,6 +476,64 @@
         .checkbox-label input {
             cursor: pointer;
         }
+
+        /* Mobile and touch improvements */
+        @media (hover: none) and (pointer: coarse) {
+            /* Increase button padding for touch devices */
+            .btn {
+                padding: 12px 20px;
+                font-size: 1rem;
+                min-height: 44px;
+            }
+
+            .btn-small {
+                padding: 8px 14px;
+                font-size: 0.9rem;
+                min-height: 40px;
+            }
+
+            .btn-nav {
+                padding: 12px 16px;
+                min-height: 44px;
+            }
+
+            /* Larger checkboxes for touch */
+            .checkbox-label input {
+                width: 18px;
+                height: 18px;
+            }
+
+            /* Adjust toolbar for mobile */
+            .toolbar {
+                padding: 12px 15px;
+            }
+        }
+
+        /* Responsive layout for small screens */
+        @media (max-width: 768px) {
+            .toolbar {
+                gap: 8px;
+            }
+
+            .toolbar h1 {
+                font-size: 1rem;
+                margin-right: 10px;
+            }
+
+            .legend {
+                display: none;
+            }
+
+            .options-panel {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+            }
+
+            .separator {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -436,11 +546,11 @@
 
         <div class="separator"></div>
 
-        <button class="btn btn-nav" onclick="prevDiff()" id="btnPrev" disabled title="Previous difference (Ctrl+Up)">
+        <button class="btn btn-nav" onclick="prevDiff()" id="btnPrev" disabled title="Previous difference (Ctrl+Up)" aria-label="Previous difference">
             <span>Prev</span>
         </button>
-        <span class="diff-counter" id="diffCounter">0 / 0</span>
-        <button class="btn btn-nav" onclick="nextDiff()" id="btnNext" disabled title="Next difference (Ctrl+Down)">
+        <span class="diff-counter" id="diffCounter" role="status" aria-label="Difference counter">0 / 0</span>
+        <button class="btn btn-nav" onclick="nextDiff()" id="btnNext" disabled title="Next difference (Ctrl+Down)" aria-label="Next difference">
             <span>Next</span>
         </button>
 
@@ -505,10 +615,10 @@
                 </div>
             </div>
             <div class="editor-container">
-                <div class="line-numbers" id="leftLineNumbers">1</div>
-                <textarea class="text-input" id="leftText" placeholder="Paste or load text here..."></textarea>
-                <div class="diff-view hidden" id="leftDiff"></div>
-                <div class="minimap" id="leftMinimap"></div>
+                <div class="line-numbers" id="leftLineNumbers" aria-hidden="true">1</div>
+                <textarea class="text-input" id="leftText" placeholder="Paste or load text here..." aria-label="Left text input (original)"></textarea>
+                <div class="diff-view hidden" id="leftDiff" role="region" aria-label="Left diff view"></div>
+                <div class="minimap" id="leftMinimap" aria-label="Difference minimap"></div>
             </div>
         </div>
 
@@ -526,15 +636,15 @@
                 </div>
             </div>
             <div class="editor-container">
-                <div class="line-numbers" id="rightLineNumbers">1</div>
-                <textarea class="text-input" id="rightText" placeholder="Paste or load text here..."></textarea>
-                <div class="diff-view hidden" id="rightDiff"></div>
-                <div class="minimap" id="rightMinimap"></div>
+                <div class="line-numbers" id="rightLineNumbers" aria-hidden="true">1</div>
+                <textarea class="text-input" id="rightText" placeholder="Paste or load text here..." aria-label="Right text input (modified)"></textarea>
+                <div class="diff-view hidden" id="rightDiff" role="region" aria-label="Right diff view"></div>
+                <div class="minimap" id="rightMinimap" aria-label="Difference minimap"></div>
             </div>
         </div>
     </div>
 
-    <div class="status-bar">
+    <div class="status-bar" role="status" aria-live="polite">
         <span id="statusLeft">Left: 0 lines, 0 characters</span>
         <span id="statusCenter">Ready</span>
         <span id="statusRight">Right: 0 lines, 0 characters</span>
@@ -544,10 +654,18 @@
     <input type="file" id="leftFileInput" class="hidden" accept=".txt,.md,.json,.xml,.html,.css,.js,.py,.java,.c,.cpp,.h,.csv,.log,.ini,.cfg,.yaml,.yml,*">
     <input type="file" id="rightFileInput" class="hidden" accept=".txt,.md,.json,.xml,.html,.css,.js,.py,.java,.c,.cpp,.h,.csv,.log,.ini,.cfg,.yaml,.yml,*">
 
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div>Comparing files...</div>
+        </div>
+    </div>
+
     <!-- Help Modal -->
-    <div class="modal-overlay" id="helpModal">
+    <div class="modal-overlay" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
         <div class="modal">
-            <h2>TextCompare - Help</h2>
+            <h2 id="helpModalTitle">TextCompare - Help</h2>
             <p><strong>How to use:</strong></p>
             <p>1. Load or paste text into both panels</p>
             <p>2. Click "Compare" to see differences</p>
@@ -562,6 +680,13 @@
             <p>- <span style="color: #7ee787;">Green</span> - Added lines/text</p>
             <p>- <span style="color: #ff7b72;">Red</span> - Removed lines/text</p>
             <p>- <span style="color: #ff6b6b; text-decoration: underline red;">Red underline</span> - Changed characters</p>
+            <p><strong>Limitations:</strong></p>
+            <p>- Recommended file size limit: 10MB</p>
+            <p>- Large files may cause browser slowdown</p>
+            <p>- Files are processed client-side (nothing uploaded to server)</p>
+            <p><strong>Browser compatibility:</strong></p>
+            <p>- Modern browsers with ES6 support (Chrome 51+, Firefox 54+, Safari 10+, Edge 15+)</p>
+            <p>- Requires FileReader API and CSS Flexbox support</p>
             <div class="modal-actions">
                 <button class="btn btn-primary" onclick="closeHelp()">Got it!</button>
             </div>
@@ -569,10 +694,16 @@
     </div>
 
     <script>
-        // State
-        let differences = [];
-        let currentDiffIndex = -1;
-        let isCompareMode = false;
+        (function() {
+            'use strict';
+
+            // Constants
+            const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+
+            // State
+            let differences = [];
+            let currentDiffIndex = -1;
+            let isCompareMode = false;
 
         // DOM Elements
         const leftText = document.getElementById('leftText');
@@ -586,6 +717,7 @@
         const diffCounter = document.getElementById('diffCounter');
         const btnPrev = document.getElementById('btnPrev');
         const btnNext = document.getElementById('btnNext');
+        const loadingOverlay = document.getElementById('loadingOverlay');
 
         // Initialize
         function init() {
@@ -670,6 +802,21 @@
             const file = event.target.files[0];
             if (!file) return;
 
+            // Validate file size
+            if (file.size > MAX_FILE_SIZE) {
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                const maxSizeMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(0);
+                const proceed = confirm(
+                    `Warning: File size is ${sizeMB}MB, which exceeds the recommended limit of ${maxSizeMB}MB.\n\n` +
+                    `Large files may cause the browser to freeze during comparison.\n\n` +
+                    `Do you want to continue?`
+                );
+                if (!proceed) {
+                    event.target.value = '';
+                    return;
+                }
+            }
+
             const reader = new FileReader();
             reader.onload = (e) => {
                 const text = e.target.result;
@@ -683,6 +830,13 @@
                 updateLineNumbers(side);
                 updateStatus();
                 if (isCompareMode) exitCompareMode();
+                document.getElementById('statusCenter').textContent = `Loaded: ${file.name}`;
+            };
+            reader.onerror = (e) => {
+                const errorMsg = `Failed to load file: ${file.name}`;
+                alert(errorMsg + '\n\nThe file may be corrupted or have an unsupported encoding.');
+                document.getElementById('statusCenter').textContent = errorMsg;
+                console.error('FileReader error:', e);
             };
             reader.readAsText(file);
             event.target.value = '';
@@ -885,12 +1039,18 @@
 
         // Main compare function
         function compare() {
-            const leftLines = leftText.value.split('\n');
-            const rightLines = rightText.value.split('\n');
+            // Show loading overlay
+            loadingOverlay.classList.add('active');
 
-            const diff = diffLines(leftLines, rightLines);
-            differences = [];
-            currentDiffIndex = -1;
+            // Use setTimeout to allow UI to update before heavy computation
+            setTimeout(() => {
+                try {
+                    const leftLines = leftText.value.split('\n');
+                    const rightLines = rightText.value.split('\n');
+
+                    const diff = diffLines(leftLines, rightLines);
+                    differences = [];
+                    currentDiffIndex = -1;
 
             let leftHtml = '', rightHtml = '';
             let leftLineNums = '', rightLineNums = '';
@@ -961,6 +1121,15 @@
                 currentDiffIndex = 0;
                 highlightCurrentDiff();
             }
+                } catch (error) {
+                    console.error('Error during comparison:', error);
+                    alert('An error occurred during comparison. The files may be too large or contain invalid content.');
+                    document.getElementById('statusCenter').textContent = 'Comparison failed';
+                } finally {
+                    // Hide loading overlay
+                    loadingOverlay.classList.remove('active');
+                }
+            }, 10);
         }
 
         function exitCompareMode() {
@@ -1099,6 +1268,20 @@
 
         // Initialize on load
         init();
+
+        // Expose functions to global scope for onclick handlers
+        window.compare = compare;
+        window.prevDiff = prevDiff;
+        window.nextDiff = nextDiff;
+        window.loadFile = loadFile;
+        window.saveFile = saveFile;
+        window.clearPanel = clearPanel;
+        window.clearAll = clearAll;
+        window.swapPanels = swapPanels;
+        window.showHelp = showHelp;
+        window.closeHelp = closeHelp;
+
+        })();
     </script>
 </body>
 </html>
