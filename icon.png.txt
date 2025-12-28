@@ -1,0 +1,13 @@
+ICON PLACEHOLDER
+
+To build the desktop executables with an icon, please add a 512x512 PNG file named "icon.png" to the root directory.
+
+You can create an icon using any image editor or online tool. The icon should represent the TextCompare application (e.g., a document comparison symbol, diff symbol, or text comparison visual).
+
+If no icon.png is provided, Electron will use the default icon.
+
+Recommended icon specifications:
+- Format: PNG
+- Size: 512x512 pixels (will be automatically resized for different platforms)
+- Transparent background (optional)
+- Simple, clear design that works at small sizes

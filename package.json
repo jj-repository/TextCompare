@@ -1,0 +1,52 @@
+{
+  "name": "textcompare",
+  "version": "2.0.0",
+  "description": "A modern text diff tool with side-by-side comparison",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --linux --win"
+  },
+  "keywords": [
+    "diff",
+    "compare",
+    "text",
+    "merge",
+    "tool"
+  ],
+  "author": "TextCompare Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.textcompare.app",
+    "productName": "TextCompare",
+    "files": [
+      "index.html",
+      "electron-main.js"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.png"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

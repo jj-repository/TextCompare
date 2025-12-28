@@ -86,7 +86,20 @@ TextCompare works on all modern browsers with ES6 support:
 ### Online (GitHub Pages)
 Visit the live demo: [https://jj-repository.github.io/TextCompare/](https://jj-repository.github.io/TextCompare/)
 
-### Offline
+### Desktop Applications (Electron)
+Download native desktop applications for your platform:
+
+**Linux:**
+- AppImage (portable, works on most distributions)
+- .deb package (Debian/Ubuntu)
+
+**Windows:**
+- Installer (.exe)
+- Portable version (no installation required)
+
+Desktop builds are automatically generated via GitHub Actions on every release. Check the [Releases](https://github.com/jj-repository/TextCompare/releases) page for downloads.
+
+### Offline (Browser)
 1. Download `index.html`
 2. Open it in any modern web browser
 3. No installation or build process required!
@@ -148,12 +161,45 @@ TextCompare supports all text-based file formats, including:
 ### Project Structure
 ```
 TextCompare/
-├── index.html          # Complete application (HTML + CSS + JS)
+├── index.html                  # Complete web application (HTML + CSS + JS)
+├── electron-main.js            # Electron main process
+├── package.json                # Node.js dependencies and build config
+├── icon.png                    # Application icon (512x512 PNG)
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml  # GitHub Pages deployment
-└── README.md           # This file
+│       ├── deploy.yml          # GitHub Pages deployment
+│       └── build-executables.yml  # Desktop app builds
+├── .gitignore                  # Git ignore rules
+└── README.md                   # This file
 ```
+
+### Building Desktop Apps Locally
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Run in development mode:**
+   ```bash
+   npm start
+   ```
+
+3. **Build for your platform:**
+   ```bash
+   # Linux
+   npm run build:linux
+
+   # Windows
+   npm run build:win
+
+   # Both
+   npm run build:all
+   ```
+
+4. **Find built executables in `dist/` folder**
+
+**Note:** You'll need to add an `icon.png` (512x512) for the application icon. See `icon.png.txt` for details.
 
 ### Code Quality
 - ✅ **Strict mode** enabled
@@ -172,6 +218,8 @@ This project is open source and available under the MIT License.
 ## Changelog
 
 ### v2.0.0 (Latest - December 2025)
+- ✨ **Desktop apps:** Added Electron-based builds for Linux and Windows
+- ✨ **GitHub Actions:** Automated desktop executable builds on releases
 - ✨ Added file size validation with 10MB warning
 - ✨ Added comprehensive error handling for file operations
 - ✨ Added loading spinner for large file comparisons
@@ -182,6 +230,8 @@ This project is open source and available under the MIT License.
 - 🧹 Removed unused CSS classes
 - 📚 Added comprehensive documentation
 - 🐛 Fixed potential memory leaks with blob URL cleanup
+- 📦 Added package.json and Electron configuration
+- 🤖 Added automated build workflow for cross-platform executables
 
 ### v1.0.0 (Initial Release)
 - 🎉 Initial release with core diff functionality
