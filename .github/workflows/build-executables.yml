@@ -37,11 +37,11 @@ jobs:
 
       - name: Build for Linux
         if: matrix.platform == 'linux'
-        run: npm run build:linux
+        run: npx electron-builder --linux --publish never
 
       - name: Build for Windows
         if: matrix.platform == 'windows'
-        run: npm run build:win
+        run: npx electron-builder --win --publish never
 
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
