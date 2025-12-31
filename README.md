@@ -1,6 +1,7 @@
 # TextCompare
 
 [![Build](https://github.com/jj-repository/TextCompare/actions/workflows/build-executables.yml/badge.svg)](https://github.com/jj-repository/TextCompare/actions/workflows/build-executables.yml)
+[![Latest Release](https://img.shields.io/github/v/release/jj-repository/TextCompare)](https://github.com/jj-repository/TextCompare/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/jj-repository/TextCompare/total)](https://github.com/jj-repository/TextCompare/releases)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)
