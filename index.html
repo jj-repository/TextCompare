@@ -25,6 +25,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'none';">
     <title>TextCompare - Text Diff Tool</title>
     <style>
         * {
@@ -68,7 +69,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            transition: all 0.2s;
+            transition: background-color 0.2s;
         }
 
         .btn-primary {
@@ -120,6 +121,27 @@
         .btn-nav:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+
+        /* Focus styles for keyboard navigation */
+        .btn:focus-visible {
+            outline: 2px solid #569cd6;
+            outline-offset: 2px;
+        }
+
+        .text-input:focus-visible {
+            outline: 2px solid #569cd6;
+            outline-offset: -2px;
+        }
+
+        .checkbox-label input:focus-visible {
+            outline: 2px solid #569cd6;
+            outline-offset: 2px;
+        }
+
+        .minimap-marker:focus-visible {
+            outline: 2px solid #569cd6;
+            outline-offset: 1px;
         }
 
         .separator {
@@ -208,9 +230,7 @@
             line-height: 1.5;
             user-select: none;
             overflow: hidden;
-            min-width: 40px;
-            max-width: 60px;
-            width: 60px;
+            width: 50px;
             flex-shrink: 0;
             border-right: 1px solid #404040;
         }
@@ -246,6 +266,7 @@
             overflow: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
         .diff-line {
@@ -698,588 +719,718 @@
             'use strict';
 
             // Constants
-            const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+            const BYTES_PER_MB = 1024 * 1024;
+            const MAX_FILE_SIZE_MB = 10;
+            const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * BYTES_PER_MB;
+            const LOADING_DELAY_MS = 10; // Delay before heavy computation to allow UI update
+            const SCROLL_DEBOUNCE_MS = 16; // ~60fps for smooth scroll sync
+
+            // Utility functions
+            function debounce(fn, delay) {
+                let timeoutId;
+                return function(...args) {
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => fn.apply(this, args), delay);
+                };
+            }
 
             // State
             let differences = [];
             let currentDiffIndex = -1;
             let isCompareMode = false;
+            let previouslyFocusedElement = null;
 
-        // DOM Elements
-        const leftText = document.getElementById('leftText');
-        const rightText = document.getElementById('rightText');
-        const leftDiff = document.getElementById('leftDiff');
-        const rightDiff = document.getElementById('rightDiff');
-        const leftLineNumbers = document.getElementById('leftLineNumbers');
-        const rightLineNumbers = document.getElementById('rightLineNumbers');
-        const leftFileInput = document.getElementById('leftFileInput');
-        const rightFileInput = document.getElementById('rightFileInput');
-        const diffCounter = document.getElementById('diffCounter');
-        const btnPrev = document.getElementById('btnPrev');
-        const btnNext = document.getElementById('btnNext');
-        const loadingOverlay = document.getElementById('loadingOverlay');
+            // DOM Elements
+            const leftText = document.getElementById('leftText');
+            const rightText = document.getElementById('rightText');
+            const leftDiff = document.getElementById('leftDiff');
+            const rightDiff = document.getElementById('rightDiff');
+            const leftLineNumbers = document.getElementById('leftLineNumbers');
+            const rightLineNumbers = document.getElementById('rightLineNumbers');
+            const leftFileInput = document.getElementById('leftFileInput');
+            const rightFileInput = document.getElementById('rightFileInput');
+            const diffCounter = document.getElementById('diffCounter');
+            const btnPrev = document.getElementById('btnPrev');
+            const btnNext = document.getElementById('btnNext');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const statusCenter = document.getElementById('statusCenter');
+            const statusLeft = document.getElementById('statusLeft');
+            const statusRight = document.getElementById('statusRight');
+            const leftFilename = document.getElementById('leftFilename');
+            const rightFilename = document.getElementById('rightFilename');
+            const leftMinimap = document.getElementById('leftMinimap');
+            const rightMinimap = document.getElementById('rightMinimap');
+            const helpModal = document.getElementById('helpModal');
+            const ignoreWhitespaceCheckbox = document.getElementById('ignoreWhitespace');
+            const ignoreCaseCheckbox = document.getElementById('ignoreCase');
+            const showLineNumbersCheckbox = document.getElementById('showLineNumbers');
 
-        // Initialize
-        function init() {
-            // Update line numbers on input
-            leftText.addEventListener('input', () => {
-                updateLineNumbers('left');
+            // Initialize
+            function init() {
+                // Update line numbers on input
+                leftText.addEventListener('input', () => {
+                    updateLineNumbers('left');
+                    updateStatus();
+                    if (isCompareMode) exitCompareMode();
+                });
+                rightText.addEventListener('input', () => {
+                    updateLineNumbers('right');
+                    updateStatus();
+                    if (isCompareMode) exitCompareMode();
+                });
+
+                // Sync scroll (debounced for performance)
+                const debouncedSyncScroll = debounce(syncScroll, SCROLL_DEBOUNCE_MS);
+                const debouncedSyncScrollDiff = debounce(syncScrollDiff, SCROLL_DEBOUNCE_MS);
+                leftText.addEventListener('scroll', () => debouncedSyncScroll('left'));
+                rightText.addEventListener('scroll', () => debouncedSyncScroll('right'));
+                leftDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('left'));
+                rightDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('right'));
+
+                // File input handlers
+                leftFileInput.addEventListener('change', (e) => handleFileLoad(e, 'left'));
+                rightFileInput.addEventListener('change', (e) => handleFileLoad(e, 'right'));
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', handleKeyboard);
+
+                // Line numbers toggle
+                showLineNumbersCheckbox.addEventListener('change', toggleLineNumbers);
+
                 updateStatus();
-                if (isCompareMode) exitCompareMode();
-            });
-            rightText.addEventListener('input', () => {
-                updateLineNumbers('right');
-                updateStatus();
-                if (isCompareMode) exitCompareMode();
-            });
-
-            // Sync scroll
-            leftText.addEventListener('scroll', () => syncScroll('left'));
-            rightText.addEventListener('scroll', () => syncScroll('right'));
-            leftDiff.addEventListener('scroll', () => syncScrollDiff('left'));
-            rightDiff.addEventListener('scroll', () => syncScrollDiff('right'));
-
-            // File input handlers
-            leftFileInput.addEventListener('change', (e) => handleFileLoad(e, 'left'));
-            rightFileInput.addEventListener('change', (e) => handleFileLoad(e, 'right'));
-
-            // Keyboard shortcuts
-            document.addEventListener('keydown', handleKeyboard);
-
-            // Line numbers toggle
-            document.getElementById('showLineNumbers').addEventListener('change', toggleLineNumbers);
-
-            updateStatus();
-        }
-
-        // Toggle line numbers visibility
-        function toggleLineNumbers() {
-            const showLineNumbers = document.getElementById('showLineNumbers').checked;
-            document.getElementById('leftLineNumbers').classList.toggle('hidden', !showLineNumbers);
-            document.getElementById('rightLineNumbers').classList.toggle('hidden', !showLineNumbers);
-        }
-
-        // Line numbers
-        function updateLineNumbers(side) {
-            const text = side === 'left' ? leftText : rightText;
-            const lineNums = side === 'left' ? leftLineNumbers : rightLineNumbers;
-            const lines = text.value.split('\n').length;
-            lineNums.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('\n');
-        }
-
-        // Scroll sync
-        function syncScroll(source) {
-            if (isCompareMode) return;
-            const sourceEl = source === 'left' ? leftText : rightText;
-            const targetEl = source === 'left' ? rightText : leftText;
-            const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
-            const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
-
-            targetEl.scrollTop = sourceEl.scrollTop;
-            sourceLines.scrollTop = sourceEl.scrollTop;
-            targetLines.scrollTop = sourceEl.scrollTop;
-        }
-
-        function syncScrollDiff(source) {
-            if (!isCompareMode) return;
-            const sourceEl = source === 'left' ? leftDiff : rightDiff;
-            const targetEl = source === 'left' ? rightDiff : leftDiff;
-            const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
-            const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
-
-            targetEl.scrollTop = sourceEl.scrollTop;
-            sourceLines.scrollTop = sourceEl.scrollTop;
-            targetLines.scrollTop = sourceEl.scrollTop;
-        }
-
-        // File loading
-        function loadFile(side) {
-            const input = side === 'left' ? leftFileInput : rightFileInput;
-            input.click();
-        }
-
-        function handleFileLoad(event, side) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // Validate file size
-            if (file.size > MAX_FILE_SIZE) {
-                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                const maxSizeMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(0);
-                const proceed = confirm(
-                    `Warning: File size is ${sizeMB}MB, which exceeds the recommended limit of ${maxSizeMB}MB.\n\n` +
-                    `Large files may cause the browser to freeze during comparison.\n\n` +
-                    `Do you want to continue?`
-                );
-                if (!proceed) {
-                    event.target.value = '';
-                    return;
-                }
             }
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const text = e.target.result;
+            // Toggle line numbers visibility
+            function toggleLineNumbers() {
+                const show = showLineNumbersCheckbox.checked;
+                leftLineNumbers.classList.toggle('hidden', !show);
+                rightLineNumbers.classList.toggle('hidden', !show);
+            }
+
+            // Line numbers
+            function updateLineNumbers(side) {
+                const text = side === 'left' ? leftText : rightText;
+                const lineNums = side === 'left' ? leftLineNumbers : rightLineNumbers;
+                const lines = text.value.split('\n').length;
+                lineNums.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('\n');
+            }
+
+            // Scroll sync
+            function syncScroll(source) {
+                if (isCompareMode) return;
+                const sourceEl = source === 'left' ? leftText : rightText;
+                const targetEl = source === 'left' ? rightText : leftText;
+                const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
+                const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
+
+                targetEl.scrollTop = sourceEl.scrollTop;
+                sourceLines.scrollTop = sourceEl.scrollTop;
+                targetLines.scrollTop = sourceEl.scrollTop;
+            }
+
+            function syncScrollDiff(source) {
+                if (!isCompareMode) return;
+                const sourceEl = source === 'left' ? leftDiff : rightDiff;
+                const targetEl = source === 'left' ? rightDiff : leftDiff;
+                const sourceLines = source === 'left' ? leftLineNumbers : rightLineNumbers;
+                const targetLines = source === 'left' ? rightLineNumbers : leftLineNumbers;
+
+                targetEl.scrollTop = sourceEl.scrollTop;
+                sourceLines.scrollTop = sourceEl.scrollTop;
+                targetLines.scrollTop = sourceEl.scrollTop;
+            }
+
+            // File loading
+            function loadFile(side) {
+                const input = side === 'left' ? leftFileInput : rightFileInput;
+                input.click();
+            }
+
+            function handleFileLoad(event, side) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                // Validate file size
+                if (file.size > MAX_FILE_SIZE) {
+                    const sizeMB = (file.size / BYTES_PER_MB).toFixed(2);
+                    const maxSizeMB = MAX_FILE_SIZE_MB;
+                    const proceed = confirm(
+                        `Warning: File size is ${sizeMB}MB, which exceeds the recommended limit of ${maxSizeMB}MB.\n\n` +
+                        `Large files may cause the browser to freeze during comparison.\n\n` +
+                        `Do you want to continue?`
+                    );
+                    if (!proceed) {
+                        event.target.value = '';
+                        return;
+                    }
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    if (side === 'left') {
+                        leftText.value = text;
+                        leftFilename.textContent = file.name;
+                    } else {
+                        rightText.value = text;
+                        rightFilename.textContent = file.name;
+                    }
+                    updateLineNumbers(side);
+                    updateStatus();
+                    if (isCompareMode) exitCompareMode();
+                    statusCenter.textContent = `Loaded: ${file.name}`;
+                };
+                reader.onerror = (e) => {
+                    const errorMsg = `Failed to load file: ${file.name}`;
+                    alert(errorMsg + '\n\nThe file may be corrupted or have an unsupported encoding.');
+                    statusCenter.textContent = errorMsg;
+                    console.error('FileReader error:', e);
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            }
+
+            // Save file
+            function saveFile(side) {
+                const text = side === 'left' ? leftText.value : rightText.value;
+                const filenameEl = side === 'left' ? leftFilename : rightFilename;
+                let filename = filenameEl.textContent;
+
+                // Generate default filename if none loaded
+                if (filename === 'No file loaded' || !filename) {
+                    filename = side === 'left' ? 'left_text.txt' : 'right_text.txt';
+                }
+
+                // Prompt for filename
+                const newFilename = prompt('Save as:', filename);
+                if (!newFilename) return; // User cancelled
+
+                // Create blob and download
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = newFilename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // Update filename display
+                filenameEl.textContent = newFilename;
+                statusCenter.textContent = `Saved: ${newFilename}`;
+            }
+
+            // Clear functions
+            function clearPanel(side) {
                 if (side === 'left') {
-                    leftText.value = text;
-                    document.getElementById('leftFilename').textContent = file.name;
+                    leftText.value = '';
+                    leftFilename.textContent = 'No file loaded';
                 } else {
-                    rightText.value = text;
-                    document.getElementById('rightFilename').textContent = file.name;
+                    rightText.value = '';
+                    rightFilename.textContent = 'No file loaded';
                 }
                 updateLineNumbers(side);
                 updateStatus();
                 if (isCompareMode) exitCompareMode();
-                document.getElementById('statusCenter').textContent = `Loaded: ${file.name}`;
-            };
-            reader.onerror = (e) => {
-                const errorMsg = `Failed to load file: ${file.name}`;
-                alert(errorMsg + '\n\nThe file may be corrupted or have an unsupported encoding.');
-                document.getElementById('statusCenter').textContent = errorMsg;
-                console.error('FileReader error:', e);
-            };
-            reader.readAsText(file);
-            event.target.value = '';
-        }
-
-        // Save file
-        function saveFile(side) {
-            const text = side === 'left' ? leftText.value : rightText.value;
-            const filenameEl = document.getElementById(side === 'left' ? 'leftFilename' : 'rightFilename');
-            let filename = filenameEl.textContent;
-
-            // Generate default filename if none loaded
-            if (filename === 'No file loaded' || !filename) {
-                filename = side === 'left' ? 'left_text.txt' : 'right_text.txt';
             }
 
-            // Prompt for filename
-            const newFilename = prompt('Save as:', filename);
-            if (!newFilename) return; // User cancelled
-
-            // Create blob and download
-            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = newFilename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            // Update filename display
-            filenameEl.textContent = newFilename;
-            document.getElementById('statusCenter').textContent = `Saved: ${newFilename}`;
-        }
-
-        // Clear functions
-        function clearPanel(side) {
-            if (side === 'left') {
-                leftText.value = '';
-                document.getElementById('leftFilename').textContent = 'No file loaded';
-            } else {
-                rightText.value = '';
-                document.getElementById('rightFilename').textContent = 'No file loaded';
+            function clearAll() {
+                clearPanel('left');
+                clearPanel('right');
             }
-            updateLineNumbers(side);
-            updateStatus();
-            if (isCompareMode) exitCompareMode();
-        }
 
-        function clearAll() {
-            clearPanel('left');
-            clearPanel('right');
-        }
+            // Swap panels
+            function swapPanels() {
+                const tempText = leftText.value;
+                const tempFilenameText = leftFilename.textContent;
 
-        // Swap panels
-        function swapPanels() {
-            const tempText = leftText.value;
-            const tempFilename = document.getElementById('leftFilename').textContent;
+                leftText.value = rightText.value;
+                leftFilename.textContent = rightFilename.textContent;
 
-            leftText.value = rightText.value;
-            document.getElementById('leftFilename').textContent = document.getElementById('rightFilename').textContent;
+                rightText.value = tempText;
+                rightFilename.textContent = tempFilenameText;
 
-            rightText.value = tempText;
-            document.getElementById('rightFilename').textContent = tempFilename;
+                updateLineNumbers('left');
+                updateLineNumbers('right');
+                updateStatus();
+                if (isCompareMode) compare();
+            }
 
-            updateLineNumbers('left');
-            updateLineNumbers('right');
-            updateStatus();
-            if (isCompareMode) compare();
-        }
+            // Status bar
+            function updateStatus() {
+                const leftLines = leftText.value ? leftText.value.split('\n').length : 0;
+                const leftChars = leftText.value.length;
+                const rightLines = rightText.value ? rightText.value.split('\n').length : 0;
+                const rightChars = rightText.value.length;
 
-        // Status bar
-        function updateStatus() {
-            const leftLines = leftText.value ? leftText.value.split('\n').length : 0;
-            const leftChars = leftText.value.length;
-            const rightLines = rightText.value ? rightText.value.split('\n').length : 0;
-            const rightChars = rightText.value.length;
+                statusLeft.textContent = `Left: ${leftLines} lines, ${leftChars} characters`;
+                statusRight.textContent = `Right: ${rightLines} lines, ${rightChars} characters`;
+            }
 
-            document.getElementById('statusLeft').textContent = `Left: ${leftLines} lines, ${leftChars} characters`;
-            document.getElementById('statusRight').textContent = `Right: ${rightLines} lines, ${rightChars} characters`;
-        }
+            // LCS-based diff algorithm with space optimization
+            // Uses O(min(m,n)) space instead of O(m*n) for large inputs
+            const LCS_FULL_MATRIX_THRESHOLD = 1000; // Use full matrix for small inputs
 
-        // LCS-based diff algorithm
-        function computeLCS(a, b) {
-            const m = a.length, n = b.length;
-            const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+            function computeLCSOptimized(a, b) {
+                const m = a.length, n = b.length;
 
-            for (let i = 1; i <= m; i++) {
-                for (let j = 1; j <= n; j++) {
-                    if (a[i - 1] === b[j - 1]) {
-                        dp[i][j] = dp[i - 1][j - 1] + 1;
-                    } else {
-                        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                // For small inputs, use full matrix (simpler backtracking)
+                if (m * n <= LCS_FULL_MATRIX_THRESHOLD * LCS_FULL_MATRIX_THRESHOLD) {
+                    return computeLCSFullMatrix(a, b);
+                }
+
+                // For large inputs, use space-optimized version
+                return computeLCSSpaceOptimized(a, b);
+            }
+
+            function computeLCSFullMatrix(a, b) {
+                const m = a.length, n = b.length;
+                const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+                for (let i = 1; i <= m; i++) {
+                    for (let j = 1; j <= n; j++) {
+                        if (a[i - 1] === b[j - 1]) {
+                            dp[i][j] = dp[i - 1][j - 1] + 1;
+                        } else {
+                            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                        }
                     }
                 }
+                return { type: 'full', dp, m, n };
             }
-            return dp;
-        }
 
-        function backtrackLCS(dp, a, b, i, j) {
-            const result = [];
-            while (i > 0 && j > 0) {
-                if (a[i - 1] === b[j - 1]) {
-                    result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
-                    i--; j--;
-                } else if (dp[i - 1][j] > dp[i][j - 1]) {
-                    i--;
+            function computeLCSSpaceOptimized(a, b) {
+                const m = a.length, n = b.length;
+
+                // Use two rows instead of full matrix
+                let prev = new Array(n + 1).fill(0);
+                let curr = new Array(n + 1).fill(0);
+
+                // Store decisions for backtracking (bit-packed for memory efficiency)
+                // 0 = came from left, 1 = came from top, 2 = diagonal match
+                const decisions = new Array(m);
+
+                for (let i = 1; i <= m; i++) {
+                    decisions[i - 1] = new Uint8Array(n);
+                    for (let j = 1; j <= n; j++) {
+                        if (a[i - 1] === b[j - 1]) {
+                            curr[j] = prev[j - 1] + 1;
+                            decisions[i - 1][j - 1] = 2; // diagonal
+                        } else if (prev[j] > curr[j - 1]) {
+                            curr[j] = prev[j];
+                            decisions[i - 1][j - 1] = 1; // top
+                        } else {
+                            curr[j] = curr[j - 1];
+                            decisions[i - 1][j - 1] = 0; // left
+                        }
+                    }
+                    [prev, curr] = [curr, prev];
+                }
+
+                return { type: 'optimized', decisions, m, n };
+            }
+
+            function backtrackLCS(lcsResult, a, b) {
+                const result = [];
+                let i = lcsResult.m, j = lcsResult.n;
+
+                if (lcsResult.type === 'full') {
+                    const dp = lcsResult.dp;
+                    while (i > 0 && j > 0) {
+                        if (a[i - 1] === b[j - 1]) {
+                            result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
+                            i--; j--;
+                        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                            i--;
+                        } else {
+                            j--;
+                        }
+                    }
                 } else {
-                    j--;
-                }
-            }
-            return result;
-        }
-
-        function diffLines(leftLines, rightLines) {
-            const ignoreWhitespace = document.getElementById('ignoreWhitespace').checked;
-            const ignoreCase = document.getElementById('ignoreCase').checked;
-
-            const processLine = (line) => {
-                let processed = line;
-                if (ignoreWhitespace) processed = processed.replace(/\s+/g, ' ').trim();
-                if (ignoreCase) processed = processed.toLowerCase();
-                return processed;
-            };
-
-            const leftProcessed = leftLines.map(processLine);
-            const rightProcessed = rightLines.map(processLine);
-
-            const dp = computeLCS(leftProcessed, rightProcessed);
-            const lcs = backtrackLCS(dp, leftProcessed, rightProcessed, leftLines.length, rightLines.length);
-
-            const result = [];
-            let li = 0, ri = 0, lcsIdx = 0;
-
-            while (li < leftLines.length || ri < rightLines.length) {
-                if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
-                    // Check if lines are actually equal (considering original case/whitespace)
-                    if (leftLines[li] === rightLines[ri]) {
-                        result.push({ type: 'equal', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                    } else {
-                        result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                    }
-                    li++; ri++; lcsIdx++;
-                } else if (lcsIdx < lcs.length && li < lcs[lcsIdx].left && ri < lcs[lcsIdx].right) {
-                    // Both have content before next match - could be modifications
-                    result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                    li++; ri++;
-                } else if (li < leftLines.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
-                    result.push({ type: 'removed', leftLine: li, left: leftLines[li] });
-                    li++;
-                } else if (ri < rightLines.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
-                    result.push({ type: 'added', rightLine: ri, right: rightLines[ri] });
-                    ri++;
-                }
-            }
-
-            return result;
-        }
-
-        function diffChars(left, right) {
-            if (!left || !right) return { left: left || '', right: right || '' };
-
-            const dp = computeLCS(left.split(''), right.split(''));
-            const lcs = backtrackLCS(dp, left.split(''), right.split(''), left.length, right.length);
-
-            let leftHtml = '', rightHtml = '';
-            let li = 0, ri = 0, lcsIdx = 0;
-
-            while (li < left.length || ri < right.length) {
-                if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
-                    leftHtml += escapeHtml(left[li]);
-                    rightHtml += escapeHtml(right[ri]);
-                    li++; ri++; lcsIdx++;
-                } else {
-                    let leftChunk = '', rightChunk = '';
-                    while (li < left.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
-                        leftChunk += left[li++];
-                    }
-                    while (ri < right.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
-                        rightChunk += right[ri++];
-                    }
-                    if (leftChunk) {
-                        leftHtml += `<span class="diff-char-changed">${escapeHtml(leftChunk)}</span>`;
-                    }
-                    if (rightChunk) {
-                        rightHtml += `<span class="diff-char-changed">${escapeHtml(rightChunk)}</span>`;
+                    const decisions = lcsResult.decisions;
+                    while (i > 0 && j > 0) {
+                        const decision = decisions[i - 1][j - 1];
+                        if (decision === 2) { // diagonal match
+                            result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
+                            i--; j--;
+                        } else if (decision === 1) { // top
+                            i--;
+                        } else { // left
+                            j--;
+                        }
                     }
                 }
+
+                return result;
             }
 
-            return { left: leftHtml, right: rightHtml };
-        }
+            function diffLines(leftLines, rightLines) {
+                const ignoreWhitespace = ignoreWhitespaceCheckbox.checked;
+                const ignoreCase = ignoreCaseCheckbox.checked;
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Main compare function
-        function compare() {
-            // Show loading overlay
-            loadingOverlay.classList.add('active');
-
-            // Use setTimeout to allow UI to update before heavy computation
-            setTimeout(() => {
-                try {
-                    const leftLines = leftText.value.split('\n');
-                    const rightLines = rightText.value.split('\n');
-
-                    const diff = diffLines(leftLines, rightLines);
-                    differences = [];
-                    currentDiffIndex = -1;
-
-            let leftHtml = '', rightHtml = '';
-            let leftLineNums = '', rightLineNums = '';
-            let leftLineNum = 0, rightLineNum = 0;
-
-            diff.forEach((d, idx) => {
-                let diffIdx = -1;
-
-                if (d.type === 'equal') {
-                    leftLineNum++;
-                    rightLineNum++;
-                    leftHtml += `<div class="diff-line">${escapeHtml(d.left) || '&nbsp;'}</div>`;
-                    rightHtml += `<div class="diff-line">${escapeHtml(d.right) || '&nbsp;'}</div>`;
-                    leftLineNums += leftLineNum + '\n';
-                    rightLineNums += rightLineNum + '\n';
-                } else if (d.type === 'modified') {
-                    leftLineNum++;
-                    rightLineNum++;
-                    diffIdx = differences.length;
-                    differences.push({ leftLine: leftLineNum, rightLine: rightLineNum, type: 'modified' });
-
-                    const charDiff = diffChars(d.left, d.right);
-                    leftHtml += `<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.left || '&nbsp;'}</div>`;
-                    rightHtml += `<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.right || '&nbsp;'}</div>`;
-                    leftLineNums += leftLineNum + '\n';
-                    rightLineNums += rightLineNum + '\n';
-                } else if (d.type === 'removed') {
-                    leftLineNum++;
-                    diffIdx = differences.length;
-                    differences.push({ leftLine: leftLineNum, type: 'removed' });
-
-                    leftHtml += `<div class="diff-line removed" data-diff="${diffIdx}">${escapeHtml(d.left) || '&nbsp;'}</div>`;
-                    rightHtml += `<div class="diff-line removed" data-diff="${diffIdx}">&nbsp;</div>`;
-                    leftLineNums += leftLineNum + '\n';
-                    rightLineNums += '-\n';
-                } else if (d.type === 'added') {
-                    rightLineNum++;
-                    diffIdx = differences.length;
-                    differences.push({ rightLine: rightLineNum, type: 'added' });
-
-                    leftHtml += `<div class="diff-line added" data-diff="${diffIdx}">&nbsp;</div>`;
-                    rightHtml += `<div class="diff-line added" data-diff="${diffIdx}">${escapeHtml(d.right) || '&nbsp;'}</div>`;
-                    leftLineNums += '-\n';
-                    rightLineNums += rightLineNum + '\n';
-                }
-            });
-
-            // Update UI
-            leftDiff.innerHTML = leftHtml;
-            rightDiff.innerHTML = rightHtml;
-            leftLineNumbers.innerHTML = leftLineNums.trim();
-            rightLineNumbers.innerHTML = rightLineNums.trim();
-
-            // Show diff views
-            leftText.classList.add('hidden');
-            rightText.classList.add('hidden');
-            leftDiff.classList.remove('hidden');
-            rightDiff.classList.remove('hidden');
-
-            isCompareMode = true;
-            updateDiffCounter();
-            updateMinimap();
-
-            document.getElementById('statusCenter').textContent = `Found ${differences.length} difference${differences.length !== 1 ? 's' : ''}`;
-
-            // Navigate to first diff if exists
-            if (differences.length > 0) {
-                currentDiffIndex = 0;
-                highlightCurrentDiff();
-            }
-                } catch (error) {
-                    console.error('Error during comparison:', error);
-                    alert('An error occurred during comparison. The files may be too large or contain invalid content.');
-                    document.getElementById('statusCenter').textContent = 'Comparison failed';
-                } finally {
-                    // Hide loading overlay
-                    loadingOverlay.classList.remove('active');
-                }
-            }, 10);
-        }
-
-        function exitCompareMode() {
-            isCompareMode = false;
-            leftText.classList.remove('hidden');
-            rightText.classList.remove('hidden');
-            leftDiff.classList.add('hidden');
-            rightDiff.classList.add('hidden');
-
-            updateLineNumbers('left');
-            updateLineNumbers('right');
-
-            differences = [];
-            currentDiffIndex = -1;
-            updateDiffCounter();
-            clearMinimap();
-
-            document.getElementById('statusCenter').textContent = 'Ready';
-        }
-
-        // Navigation
-        function updateDiffCounter() {
-            const current = currentDiffIndex >= 0 ? currentDiffIndex + 1 : 0;
-            diffCounter.textContent = `${current} / ${differences.length}`;
-            btnPrev.disabled = differences.length === 0 || currentDiffIndex <= 0;
-            btnNext.disabled = differences.length === 0 || currentDiffIndex >= differences.length - 1;
-        }
-
-        function highlightCurrentDiff() {
-            // Remove previous highlight
-            document.querySelectorAll('.diff-line.current').forEach(el => el.classList.remove('current'));
-
-            if (currentDiffIndex < 0 || currentDiffIndex >= differences.length) return;
-
-            // Add highlight to current diff
-            const diffLines = document.querySelectorAll(`[data-diff="${currentDiffIndex}"]`);
-            diffLines.forEach(el => {
-                el.classList.add('current');
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            });
-
-            updateDiffCounter();
-        }
-
-        function prevDiff() {
-            if (currentDiffIndex > 0) {
-                currentDiffIndex--;
-                highlightCurrentDiff();
-            }
-        }
-
-        function nextDiff() {
-            if (currentDiffIndex < differences.length - 1) {
-                currentDiffIndex++;
-                highlightCurrentDiff();
-            }
-        }
-
-        // Minimap
-        function updateMinimap() {
-            const leftMinimap = document.getElementById('leftMinimap');
-            const rightMinimap = document.getElementById('rightMinimap');
-
-            leftMinimap.innerHTML = '';
-            rightMinimap.innerHTML = '';
-
-            const totalLines = Math.max(
-                leftDiff.querySelectorAll('.diff-line').length,
-                rightDiff.querySelectorAll('.diff-line').length
-            );
-
-            if (totalLines === 0) return;
-
-            const minimapHeight = leftMinimap.offsetHeight;
-
-            differences.forEach((diff, idx) => {
-                const lineNum = diff.leftLine || diff.rightLine || 1;
-                const position = (lineNum / totalLines) * 100;
-
-                const marker = document.createElement('div');
-                marker.className = `minimap-marker ${diff.type}`;
-                marker.style.top = `${position}%`;
-                marker.onclick = () => {
-                    currentDiffIndex = idx;
-                    highlightCurrentDiff();
+                const processLine = (line) => {
+                    let processed = line;
+                    if (ignoreWhitespace) processed = processed.replace(/\s+/g, ' ').trim();
+                    if (ignoreCase) processed = processed.toLowerCase();
+                    return processed;
                 };
 
-                leftMinimap.appendChild(marker.cloneNode(true));
-                rightMinimap.appendChild(marker);
+                const leftProcessed = leftLines.map(processLine);
+                const rightProcessed = rightLines.map(processLine);
+
+                const lcsResult = computeLCSOptimized(leftProcessed, rightProcessed);
+                const lcs = backtrackLCS(lcsResult, leftProcessed, rightProcessed);
+
+                const result = [];
+                let li = 0, ri = 0, lcsIdx = 0;
+
+                while (li < leftLines.length || ri < rightLines.length) {
+                    if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
+                        // Check if lines are actually equal (considering original case/whitespace)
+                        if (leftLines[li] === rightLines[ri]) {
+                            result.push({ type: 'equal', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                        } else {
+                            result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                        }
+                        li++; ri++; lcsIdx++;
+                    } else if (lcsIdx < lcs.length && li < lcs[lcsIdx].left && ri < lcs[lcsIdx].right) {
+                        // Both have content before next match - could be modifications
+                        result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
+                        li++; ri++;
+                    } else if (li < leftLines.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
+                        result.push({ type: 'removed', leftLine: li, left: leftLines[li] });
+                        li++;
+                    } else if (ri < rightLines.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
+                        result.push({ type: 'added', rightLine: ri, right: rightLines[ri] });
+                        ri++;
+                    }
+                }
+
+                return result;
+            }
+
+            function diffChars(left, right) {
+                if (!left || !right) return { left: left || '', right: right || '' };
+
+                const leftChars = left.split('');
+                const rightChars = right.split('');
+                const lcsResult = computeLCSOptimized(leftChars, rightChars);
+                const lcs = backtrackLCS(lcsResult, leftChars, rightChars);
+
+                let leftHtml = '', rightHtml = '';
+                let li = 0, ri = 0, lcsIdx = 0;
+
+                while (li < left.length || ri < right.length) {
+                    if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
+                        leftHtml += escapeHtml(left[li]);
+                        rightHtml += escapeHtml(right[ri]);
+                        li++; ri++; lcsIdx++;
+                    } else {
+                        let leftChunk = '', rightChunk = '';
+                        while (li < left.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
+                            leftChunk += left[li++];
+                        }
+                        while (ri < right.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
+                            rightChunk += right[ri++];
+                        }
+                        if (leftChunk) {
+                            leftHtml += `<span class="diff-char-changed">${escapeHtml(leftChunk)}</span>`;
+                        }
+                        if (rightChunk) {
+                            rightHtml += `<span class="diff-char-changed">${escapeHtml(rightChunk)}</span>`;
+                        }
+                    }
+                }
+
+                return { left: leftHtml, right: rightHtml };
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Main compare function
+            function compare() {
+                // Show loading overlay
+                loadingOverlay.classList.add('active');
+
+                // Use setTimeout to allow UI to update before heavy computation
+                setTimeout(() => {
+                    try {
+                        const leftLines = leftText.value.split('\n');
+                        const rightLines = rightText.value.split('\n');
+
+                        const diff = diffLines(leftLines, rightLines);
+                        differences = [];
+                        currentDiffIndex = -1;
+
+                        // Use arrays for efficient string building
+                        const leftHtmlParts = [];
+                        const rightHtmlParts = [];
+                        const leftLineNumParts = [];
+                        const rightLineNumParts = [];
+                        let leftLineNum = 0, rightLineNum = 0;
+
+                        diff.forEach((d) => {
+                            let diffIdx = -1;
+
+                            if (d.type === 'equal') {
+                                leftLineNum++;
+                                rightLineNum++;
+                                leftHtmlParts.push(`<div class="diff-line">${escapeHtml(d.left) || '&nbsp;'}</div>`);
+                                rightHtmlParts.push(`<div class="diff-line">${escapeHtml(d.right) || '&nbsp;'}</div>`);
+                                leftLineNumParts.push(leftLineNum);
+                                rightLineNumParts.push(rightLineNum);
+                            } else if (d.type === 'modified') {
+                                leftLineNum++;
+                                rightLineNum++;
+                                diffIdx = differences.length;
+                                differences.push({ leftLine: leftLineNum, rightLine: rightLineNum, type: 'modified' });
+
+                                const charDiff = diffChars(d.left, d.right);
+                                leftHtmlParts.push(`<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.left || '&nbsp;'}</div>`);
+                                rightHtmlParts.push(`<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.right || '&nbsp;'}</div>`);
+                                leftLineNumParts.push(leftLineNum);
+                                rightLineNumParts.push(rightLineNum);
+                            } else if (d.type === 'removed') {
+                                leftLineNum++;
+                                diffIdx = differences.length;
+                                differences.push({ leftLine: leftLineNum, type: 'removed' });
+
+                                leftHtmlParts.push(`<div class="diff-line removed" data-diff="${diffIdx}">${escapeHtml(d.left) || '&nbsp;'}</div>`);
+                                rightHtmlParts.push(`<div class="diff-line removed" data-diff="${diffIdx}">&nbsp;</div>`);
+                                leftLineNumParts.push(leftLineNum);
+                                rightLineNumParts.push('-');
+                            } else if (d.type === 'added') {
+                                rightLineNum++;
+                                diffIdx = differences.length;
+                                differences.push({ rightLine: rightLineNum, type: 'added' });
+
+                                leftHtmlParts.push(`<div class="diff-line added" data-diff="${diffIdx}">&nbsp;</div>`);
+                                rightHtmlParts.push(`<div class="diff-line added" data-diff="${diffIdx}">${escapeHtml(d.right) || '&nbsp;'}</div>`);
+                                leftLineNumParts.push('-');
+                                rightLineNumParts.push(rightLineNum);
+                            }
+                        });
+
+                        // Update UI with joined arrays
+                        leftDiff.innerHTML = leftHtmlParts.join('');
+                        rightDiff.innerHTML = rightHtmlParts.join('');
+                        leftLineNumbers.innerHTML = leftLineNumParts.join('\n');
+                        rightLineNumbers.innerHTML = rightLineNumParts.join('\n');
+
+                        // Show diff views
+                        leftText.classList.add('hidden');
+                        rightText.classList.add('hidden');
+                        leftDiff.classList.remove('hidden');
+                        rightDiff.classList.remove('hidden');
+
+                        isCompareMode = true;
+                        updateDiffCounter();
+                        updateMinimap();
+
+                        statusCenter.textContent = `Found ${differences.length} difference${differences.length !== 1 ? 's' : ''}`;
+
+                        // Navigate to first diff if exists
+                        if (differences.length > 0) {
+                            currentDiffIndex = 0;
+                            highlightCurrentDiff();
+                        }
+                    } catch (error) {
+                        console.error('Error during comparison:', error);
+                        alert('An error occurred during comparison. The files may be too large or contain invalid content.');
+                        statusCenter.textContent = 'Comparison failed';
+                    } finally {
+                        // Hide loading overlay
+                        loadingOverlay.classList.remove('active');
+                    }
+                }, LOADING_DELAY_MS);
+            }
+
+            function exitCompareMode() {
+                isCompareMode = false;
+                leftText.classList.remove('hidden');
+                rightText.classList.remove('hidden');
+                leftDiff.classList.add('hidden');
+                rightDiff.classList.add('hidden');
+
+                updateLineNumbers('left');
+                updateLineNumbers('right');
+
+                differences = [];
+                currentDiffIndex = -1;
+                updateDiffCounter();
+                clearMinimap();
+
+                statusCenter.textContent = 'Ready';
+            }
+
+            // Navigation
+            function updateDiffCounter() {
+                const current = currentDiffIndex >= 0 ? currentDiffIndex + 1 : 0;
+                diffCounter.textContent = `${current} / ${differences.length}`;
+                btnPrev.disabled = differences.length === 0 || currentDiffIndex <= 0;
+                btnNext.disabled = differences.length === 0 || currentDiffIndex >= differences.length - 1;
+            }
+
+            function highlightCurrentDiff() {
+                // Remove previous highlight
+                document.querySelectorAll('.diff-line.current').forEach(el => el.classList.remove('current'));
+
+                if (currentDiffIndex < 0 || currentDiffIndex >= differences.length) return;
+
+                // Add highlight to current diff
+                const diffLines = document.querySelectorAll(`[data-diff="${currentDiffIndex}"]`);
+                diffLines.forEach(el => {
+                    el.classList.add('current');
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+
+                updateDiffCounter();
+            }
+
+            function prevDiff() {
+                if (currentDiffIndex > 0) {
+                    currentDiffIndex--;
+                    highlightCurrentDiff();
+                }
+            }
+
+            function nextDiff() {
+                if (currentDiffIndex < differences.length - 1) {
+                    currentDiffIndex++;
+                    highlightCurrentDiff();
+                }
+            }
+
+            // Minimap
+            function updateMinimap() {
+                leftMinimap.innerHTML = '';
+                rightMinimap.innerHTML = '';
+
+                const totalLines = Math.max(
+                    leftDiff.querySelectorAll('.diff-line').length,
+                    rightDiff.querySelectorAll('.diff-line').length
+                );
+
+                if (totalLines === 0) return;
+
+                differences.forEach((diff, idx) => {
+                    const lineNum = diff.leftLine || diff.rightLine || 1;
+                    const position = (lineNum / totalLines) * 100;
+
+                    const createMarker = () => {
+                        const marker = document.createElement('div');
+                        marker.className = `minimap-marker ${diff.type}`;
+                        marker.style.top = `${position}%`;
+                        marker.onclick = () => {
+                            currentDiffIndex = idx;
+                            highlightCurrentDiff();
+                        };
+                        return marker;
+                    };
+
+                    leftMinimap.appendChild(createMarker());
+                    rightMinimap.appendChild(createMarker());
+                });
+            }
+
+            function clearMinimap() {
+                leftMinimap.innerHTML = '';
+                rightMinimap.innerHTML = '';
+            }
+
+            // Help modal with focus trap
+            function showHelp() {
+                previouslyFocusedElement = document.activeElement;
+                helpModal.classList.add('active');
+                // Focus the close button for accessibility
+                const closeButton = helpModal.querySelector('.btn-primary');
+                if (closeButton) {
+                    closeButton.focus();
+                }
+            }
+
+            function closeHelp() {
+                helpModal.classList.remove('active');
+                // Restore focus to the element that opened the modal
+                if (previouslyFocusedElement && previouslyFocusedElement.focus) {
+                    previouslyFocusedElement.focus();
+                }
+                previouslyFocusedElement = null;
+            }
+
+            // Focus trap for modal
+            function handleModalKeydown(e) {
+                if (!helpModal.classList.contains('active')) return;
+
+                if (e.key === 'Tab') {
+                    const focusableElements = helpModal.querySelectorAll(
+                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                    );
+                    const firstElement = focusableElements[0];
+                    const lastElement = focusableElements[focusableElements.length - 1];
+
+                    if (e.shiftKey && document.activeElement === firstElement) {
+                        e.preventDefault();
+                        lastElement.focus();
+                    } else if (!e.shiftKey && document.activeElement === lastElement) {
+                        e.preventDefault();
+                        firstElement.focus();
+                    }
+                }
+            }
+
+            // Keyboard shortcuts
+            function handleKeyboard(e) {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    compare();
+                } else if (e.ctrlKey && e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    prevDiff();
+                } else if (e.ctrlKey && e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    nextDiff();
+                } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+                    e.preventDefault();
+                    saveFile('left');
+                } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+                    e.preventDefault();
+                    saveFile('right');
+                } else if (e.key === 'Escape') {
+                    closeHelp();
+                    if (isCompareMode) exitCompareMode();
+                }
+            }
+
+            // Close modal on overlay click
+            helpModal.addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) {
+                    closeHelp();
+                }
             });
-        }
 
-        function clearMinimap() {
-            document.getElementById('leftMinimap').innerHTML = '';
-            document.getElementById('rightMinimap').innerHTML = '';
-        }
+            // Focus trap for modal
+            helpModal.addEventListener('keydown', handleModalKeydown);
 
-        // Help modal
-        function showHelp() {
-            document.getElementById('helpModal').classList.add('active');
-        }
+            // Initialize on load
+            init();
 
-        function closeHelp() {
-            document.getElementById('helpModal').classList.remove('active');
-        }
-
-        // Keyboard shortcuts
-        function handleKeyboard(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                compare();
-            } else if (e.ctrlKey && e.key === 'ArrowUp') {
-                e.preventDefault();
-                prevDiff();
-            } else if (e.ctrlKey && e.key === 'ArrowDown') {
-                e.preventDefault();
-                nextDiff();
-            } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                saveFile('left');
-            } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                saveFile('right');
-            } else if (e.key === 'Escape') {
-                closeHelp();
-                if (isCompareMode) exitCompareMode();
-            }
-        }
-
-        // Close modal on overlay click
-        document.getElementById('helpModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                closeHelp();
-            }
-        });
-
-        // Initialize on load
-        init();
-
-        // Expose functions to global scope for onclick handlers
-        window.compare = compare;
-        window.prevDiff = prevDiff;
-        window.nextDiff = nextDiff;
-        window.loadFile = loadFile;
-        window.saveFile = saveFile;
-        window.clearPanel = clearPanel;
-        window.clearAll = clearAll;
-        window.swapPanels = swapPanels;
-        window.showHelp = showHelp;
-        window.closeHelp = closeHelp;
+            // Expose functions to global scope for onclick handlers
+            window.compare = compare;
+            window.prevDiff = prevDiff;
+            window.nextDiff = nextDiff;
+            window.loadFile = loadFile;
+            window.saveFile = saveFile;
+            window.clearPanel = clearPanel;
+            window.clearAll = clearAll;
+            window.swapPanels = swapPanels;
+            window.showHelp = showHelp;
+            window.closeHelp = closeHelp;
 
         })();
     </script>
