@@ -40,21 +40,29 @@ A modern, web-based text diff tool with a VS Code-inspired interface for compari
 - **Keyboard shortcuts** for power users
 - **VS Code-inspired dark theme** for comfortable viewing
 
-## Recent Improvements (Latest Update)
+## Recent Improvements (v2.1.0)
 
-### High Priority Enhancements
-1. ✅ **Code cleanup** - Removed unused CSS classes
-2. ✅ **File size validation** - 10MB limit with user warnings
-3. ✅ **Error handling** - Robust error handling for file operations
-4. ✅ **Accessibility** - Full ARIA support and screen reader compatibility
+### Performance Optimizations
+- ✅ **Optimized LCS algorithm** - Uses Uint8Array for large files, reducing memory usage
+- ✅ **Debounced scroll sync** - Smoother scrolling at ~60fps
+- ✅ **Efficient HTML building** - Array join instead of string concatenation
+- ✅ **CSS transition optimization** - Specific properties instead of 'all'
 
-### Medium Priority Enhancements
-5. ✅ **Module pattern** - JavaScript wrapped in IIFE for better encapsulation
-6. ✅ **Progress indicator** - Loading spinner for large comparisons
-7. ✅ **Mobile optimization** - Touch-friendly buttons and responsive layout
+### Accessibility & UX
+- ✅ **Focus trap for modal** - Keyboard navigation stays within modal
+- ✅ **Focus-visible styles** - Clear keyboard navigation indicators
+- ✅ **Window state persistence** - Remembers position, size, and maximized state
 
-### Documentation
-8. ✅ **Comprehensive documentation** - Browser compatibility and limitations clearly stated
+### Security & Stability
+- ✅ **Content Security Policy** - Added CSP meta tag
+- ✅ **Screen bounds validation** - Prevents window opening off-screen
+- ✅ **Improved error handling** - Better Electron error dialogs
+
+### Code Quality
+- ✅ **DOM query caching** - 11 new cached element references
+- ✅ **Named constants** - Extracted magic numbers
+- ✅ **Consistent indentation** - Cleaned up code formatting
+- ✅ **Fixed minimap bug** - Correct onclick handlers for both minimaps
 
 ## Browser Compatibility
 
@@ -157,7 +165,7 @@ TextCompare supports all text-based file formats, including:
 - **Binary files**: Not supported (text files only)
 - **Character encoding**: UTF-8 recommended (other encodings may display incorrectly)
 - **Line endings**: Handles CRLF/LF automatically
-- **Algorithm complexity**: O(m×n) time and space for LCS computation
+- **Algorithm complexity**: O(m×n) time, optimized space usage with Uint8Array for large files
 
 ## Development
 
@@ -220,7 +228,21 @@ This project is open source and available under the MIT License.
 
 ## Changelog
 
-### v2.0.0 (Latest - December 2025)
+### v2.1.0 (Latest - January 2026)
+- ⚡ **Performance:** Optimized LCS algorithm with Uint8Array for large files
+- ⚡ **Performance:** Debounced scroll sync for smoother 60fps scrolling
+- ⚡ **Performance:** Array join for efficient HTML string building
+- ♿ **Accessibility:** Added focus trap for help modal
+- ♿ **Accessibility:** Added :focus-visible styles for keyboard navigation
+- 🔒 **Security:** Added Content-Security-Policy meta tag
+- 🔒 **Security:** Screen bounds validation prevents off-screen windows
+- 💾 **Desktop:** Window state persistence (position, size, maximized)
+- 🐛 **Bug fix:** Fixed minimap onclick handlers not working on left panel
+- 🧹 **Code quality:** Cached 11 DOM element references
+- 🧹 **Code quality:** Extracted magic numbers to named constants
+- 🧹 **Code quality:** Fixed inconsistent indentation throughout
+
+### v2.0.0 (December 2025)
 - ✨ **Desktop apps:** Added Electron-based builds for Linux and Windows
 - ✨ **GitHub Actions:** Automated desktop executable builds on releases
 - ✨ Added file size validation with 10MB warning

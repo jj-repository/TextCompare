@@ -1,8 +1,16 @@
 {
   "name": "textcompare",
-  "version": "2.0.0",
-  "description": "A modern text diff tool with side-by-side comparison",
+  "version": "2.1.0",
+  "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jj-repository/TextCompare.git"
+  },
+  "homepage": "https://jj-repository.github.io/TextCompare/",
+  "bugs": {
+    "url": "https://github.com/jj-repository/TextCompare/issues"
+  },
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
@@ -15,13 +23,19 @@
     "compare",
     "text",
     "merge",
-    "tool"
+    "tool",
+    "lcs",
+    "electron",
+    "desktop"
   ],
   "author": {
     "name": "TextCompare Contributors",
     "email": "textcompare@users.noreply.github.com"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "electron": "^39.2.7",
     "electron-builder": "^24.9.1"
