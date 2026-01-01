@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -22,7 +22,25 @@ function loadWindowState() {
       const state = JSON.parse(data);
       // Validate state has required properties
       if (state && typeof state.width === 'number' && typeof state.height === 'number') {
-        return { ...defaultWindowState, ...state };
+        const mergedState = { ...defaultWindowState, ...state };
+
+        // Validate window position is within visible screen bounds
+        if (typeof mergedState.x === 'number' && typeof mergedState.y === 'number') {
+          const displays = screen.getAllDisplays();
+          const isVisible = displays.some(display => {
+            const { x, y, width, height } = display.bounds;
+            return mergedState.x >= x && mergedState.x < x + width &&
+                   mergedState.y >= y && mergedState.y < y + height;
+          });
+
+          // Reset position if window would be off-screen
+          if (!isVisible) {
+            mergedState.x = undefined;
+            mergedState.y = undefined;
+          }
+        }
+
+        return mergedState;
       }
     }
   } catch (err) {
@@ -80,8 +98,6 @@ function createWindow() {
 
   mainWindow.loadFile('index.html').catch(err => {
     console.error('Failed to load index.html:', err);
-    // Show error dialog to user
-    const { dialog } = require('electron');
     dialog.showErrorBox('Load Error', 'Failed to load the application. Please reinstall.');
     app.quit();
   });
