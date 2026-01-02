@@ -1,6 +1,6 @@
 {
   "name": "textcompare",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
   "repository": {
