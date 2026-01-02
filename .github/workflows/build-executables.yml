@@ -84,7 +84,7 @@ jobs:
           path: artifacts/windows
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/linux/*
