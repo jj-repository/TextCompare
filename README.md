@@ -40,7 +40,7 @@ A modern, web-based text diff tool with a VS Code-inspired interface for compari
 - **Keyboard shortcuts** for power users
 - **VS Code-inspired dark theme** for comfortable viewing
 
-## Recent Improvements (v2.1.0)
+## Recent Improvements (v2.2.0)
 
 ### Performance Optimizations
 - ✅ **Optimized LCS algorithm** - Uses Uint8Array for large files, reducing memory usage
