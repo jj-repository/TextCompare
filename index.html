@@ -25,6 +25,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CSP Note: 'unsafe-inline' is required because this is a single-file application
+         with embedded JS/CSS. Inline onclick handlers have been removed in favor of
+         addEventListener for better security hygiene. For full CSP compliance without
+         'unsafe-inline', the JS/CSS would need to be split into separate files. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'none';">
     <title>TextCompare - Text Diff Tool</title>
     <style>
@@ -560,17 +564,17 @@
     <div class="toolbar">
         <h1>TextCompare</h1>
 
-        <button class="btn btn-success" onclick="compare()" title="Compare texts (Ctrl+Enter)">
+        <button class="btn btn-success" id="btnCompare" title="Compare texts (Ctrl+Enter)">
             <span>Compare</span>
         </button>
 
         <div class="separator"></div>
 
-        <button class="btn btn-nav" onclick="prevDiff()" id="btnPrev" disabled title="Previous difference (Ctrl+Up)" aria-label="Previous difference">
+        <button class="btn btn-nav" id="btnPrev" disabled title="Previous difference (Ctrl+Up)" aria-label="Previous difference">
             <span>Prev</span>
         </button>
         <span class="diff-counter" id="diffCounter" role="status" aria-label="Difference counter">0 / 0</span>
-        <button class="btn btn-nav" onclick="nextDiff()" id="btnNext" disabled title="Next difference (Ctrl+Down)" aria-label="Next difference">
+        <button class="btn btn-nav" id="btnNext" disabled title="Next difference (Ctrl+Down)" aria-label="Next difference">
             <span>Next</span>
         </button>
 
@@ -593,15 +597,15 @@
 
         <div class="separator"></div>
 
-        <button class="btn btn-secondary" onclick="swapPanels()" title="Swap left and right">
+        <button class="btn btn-secondary" id="btnSwap" title="Swap left and right">
             <span>Swap</span>
         </button>
 
-        <button class="btn btn-danger" onclick="clearAll()" title="Clear all">
+        <button class="btn btn-danger" id="btnClearAll" title="Clear all">
             <span>Clear All</span>
         </button>
 
-        <button class="btn btn-secondary" onclick="showHelp()" title="Help">
+        <button class="btn btn-secondary" id="btnHelp" title="Help">
             <span>?</span>
         </button>
 
@@ -629,9 +633,9 @@
                     <span class="filename" id="leftFilename">No file loaded</span>
                 </div>
                 <div class="panel-actions">
-                    <button class="btn btn-primary btn-small" onclick="loadFile('left')">Load</button>
-                    <button class="btn btn-success btn-small" onclick="saveFile('left')" title="Save file (Ctrl+Shift+S)">Save</button>
-                    <button class="btn btn-secondary btn-small" onclick="clearPanel('left')">Clear</button>
+                    <button class="btn btn-primary btn-small" id="btnLoadLeft">Load</button>
+                    <button class="btn btn-success btn-small" id="btnSaveLeft" title="Save file (Ctrl+Shift+S)">Save</button>
+                    <button class="btn btn-secondary btn-small" id="btnClearLeft">Clear</button>
                 </div>
             </div>
             <div class="editor-container">
@@ -650,9 +654,9 @@
                     <span class="filename" id="rightFilename">No file loaded</span>
                 </div>
                 <div class="panel-actions">
-                    <button class="btn btn-primary btn-small" onclick="loadFile('right')">Load</button>
-                    <button class="btn btn-success btn-small" onclick="saveFile('right')" title="Save file (Ctrl+S)">Save</button>
-                    <button class="btn btn-secondary btn-small" onclick="clearPanel('right')">Clear</button>
+                    <button class="btn btn-primary btn-small" id="btnLoadRight">Load</button>
+                    <button class="btn btn-success btn-small" id="btnSaveRight" title="Save file (Ctrl+S)">Save</button>
+                    <button class="btn btn-secondary btn-small" id="btnClearRight">Clear</button>
                 </div>
             </div>
             <div class="editor-container">
@@ -708,7 +712,7 @@
             <p>- Modern browsers with ES6 support (Chrome 51+, Firefox 54+, Safari 10+, Edge 15+)</p>
             <p>- Requires FileReader API and CSS Flexbox support</p>
             <div class="modal-actions">
-                <button class="btn btn-primary" onclick="closeHelp()">Got it!</button>
+                <button class="btn btn-primary" id="btnCloseHelp">Got it!</button>
             </div>
         </div>
     </div>
@@ -737,6 +741,7 @@
             let differences = [];
             let currentDiffIndex = -1;
             let isCompareMode = false;
+            let isComparing = false; // Prevents concurrent compare operations
             let previouslyFocusedElement = null;
 
             // DOM Elements
@@ -795,6 +800,25 @@
 
                 // Line numbers toggle
                 showLineNumbersCheckbox.addEventListener('change', toggleLineNumbers);
+
+                // Toolbar button handlers (moved from inline onclick for CSP compliance)
+                document.getElementById('btnCompare').addEventListener('click', compare);
+                document.getElementById('btnPrev').addEventListener('click', prevDiff);
+                document.getElementById('btnNext').addEventListener('click', nextDiff);
+                document.getElementById('btnSwap').addEventListener('click', swapPanels);
+                document.getElementById('btnClearAll').addEventListener('click', clearAll);
+                document.getElementById('btnHelp').addEventListener('click', showHelp);
+                document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
+
+                // Left panel button handlers
+                document.getElementById('btnLoadLeft').addEventListener('click', () => loadFile('left'));
+                document.getElementById('btnSaveLeft').addEventListener('click', () => saveFile('left'));
+                document.getElementById('btnClearLeft').addEventListener('click', () => clearPanel('left'));
+
+                // Right panel button handlers
+                document.getElementById('btnLoadRight').addEventListener('click', () => loadFile('right'));
+                document.getElementById('btnSaveRight').addEventListener('click', () => saveFile('right'));
+                document.getElementById('btnClearRight').addEventListener('click', () => clearPanel('right'));
 
                 updateStatus();
             }
@@ -880,10 +904,18 @@
                     statusCenter.textContent = `Loaded: ${file.name}`;
                 };
                 reader.onerror = (e) => {
+                    let errorDetail = 'Unknown error';
+                    if (reader.error) {
+                        errorDetail = reader.error.message || reader.error.name || 'Unknown error';
+                    }
                     const errorMsg = `Failed to load file: ${file.name}`;
-                    alert(errorMsg + '\n\nThe file may be corrupted or have an unsupported encoding.');
+                    alert(`${errorMsg}\n\nError: ${errorDetail}\n\nThe file may be corrupted, too large, or have an unsupported encoding.`);
                     statusCenter.textContent = errorMsg;
-                    console.error('FileReader error:', e);
+                    console.error('FileReader error:', reader.error);
+                };
+                reader.onabort = () => {
+                    statusCenter.textContent = `Load cancelled: ${file.name}`;
+                    console.log('FileReader aborted:', file.name);
                 };
                 reader.readAsText(file);
                 event.target.value = '';
@@ -904,20 +936,31 @@
                 const newFilename = prompt('Save as:', filename);
                 if (!newFilename) return; // User cancelled
 
+                // Sanitize filename: remove path separators and control characters
+                const sanitizedFilename = newFilename
+                    .replace(/[/\\]/g, '_')  // Replace path separators
+                    .replace(/[<>:"|?*\x00-\x1f]/g, '_')  // Replace other invalid chars
+                    .trim();
+
+                if (!sanitizedFilename) {
+                    statusCenter.textContent = 'Error: Invalid filename';
+                    return;
+                }
+
                 // Create blob and download
                 const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = newFilename;
+                a.download = sanitizedFilename;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
                 // Update filename display
-                filenameEl.textContent = newFilename;
-                statusCenter.textContent = `Saved: ${newFilename}`;
+                filenameEl.textContent = sanitizedFilename;
+                statusCenter.textContent = `Saved: ${sanitizedFilename}`;
             }
 
             // Clear functions
@@ -1034,9 +1077,25 @@
                 const result = [];
                 let i = lcsResult.m, j = lcsResult.n;
 
+                // Bounds validation to prevent index errors
+                if (i < 0 || j < 0 || i > a.length || j > b.length) {
+                    console.error('LCS backtracking bounds error: invalid indices');
+                    return result;
+                }
+
                 if (lcsResult.type === 'full') {
                     const dp = lcsResult.dp;
+                    // Validate dp matrix exists and has correct dimensions
+                    if (!dp || dp.length <= i) {
+                        console.error('LCS backtracking error: invalid dp matrix');
+                        return result;
+                    }
                     while (i > 0 && j > 0) {
+                        // Validate row exists before accessing
+                        if (!dp[i] || !dp[i - 1]) {
+                            console.error('LCS backtracking error: missing dp row');
+                            break;
+                        }
                         if (a[i - 1] === b[j - 1]) {
                             result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
                             i--; j--;
@@ -1048,7 +1107,17 @@
                     }
                 } else {
                     const decisions = lcsResult.decisions;
+                    // Validate decisions array exists
+                    if (!decisions || decisions.length < i) {
+                        console.error('LCS backtracking error: invalid decisions array');
+                        return result;
+                    }
                     while (i > 0 && j > 0) {
+                        // Validate indices before accessing
+                        if (!decisions[i - 1] || j - 1 >= decisions[i - 1].length) {
+                            console.error('LCS backtracking error: invalid decision index');
+                            break;
+                        }
                         const decision = decisions[i - 1][j - 1];
                         if (decision === 2) { // diagonal match
                             result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
@@ -1153,6 +1222,12 @@
 
             // Main compare function
             function compare() {
+                // Prevent concurrent comparisons
+                if (isComparing) {
+                    return;
+                }
+                isComparing = true;
+
                 // Show loading overlay
                 loadingOverlay.classList.add('active');
 
@@ -1243,8 +1318,9 @@
                         alert('An error occurred during comparison. The files may be too large or contain invalid content.');
                         statusCenter.textContent = 'Comparison failed';
                     } finally {
-                        // Hide loading overlay
+                        // Hide loading overlay and reset comparison flag
                         loadingOverlay.classList.remove('active');
+                        isComparing = false;
                     }
                 }, LOADING_DELAY_MS);
             }
@@ -1419,17 +1495,9 @@
             // Initialize on load
             init();
 
-            // Expose functions to global scope for onclick handlers
-            window.compare = compare;
-            window.prevDiff = prevDiff;
-            window.nextDiff = nextDiff;
-            window.loadFile = loadFile;
-            window.saveFile = saveFile;
-            window.clearPanel = clearPanel;
-            window.clearAll = clearAll;
-            window.swapPanels = swapPanels;
-            window.showHelp = showHelp;
-            window.closeHelp = closeHelp;
+            // Note: Functions are no longer exposed to global scope
+            // All event handlers are registered via addEventListener in init()
+            // This improves CSP compliance and encapsulation
 
         })();
     </script>
