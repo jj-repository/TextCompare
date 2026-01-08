@@ -40,7 +40,7 @@ A modern, web-based text diff tool with a VS Code-inspired interface for compari
 - **Keyboard shortcuts** for power users
 - **VS Code-inspired dark theme** for comfortable viewing
 
-## Recent Improvements (v2.2.0)
+## Recent Improvements (v2.2.1)
 
 ### Performance Optimizations
 - ✅ **Optimized LCS algorithm** - Uses Uint8Array for large files, reducing memory usage
@@ -228,7 +228,16 @@ This project is open source and available under the MIT License.
 
 ## Changelog
 
-### v2.1.0 (Latest - January 2026)
+### v2.2.1 (Latest - January 2026)
+- 🔒 **Security:** Removed inline onclick handlers, use addEventListener for CSP compliance
+- 🔒 **Security:** Added CSP comment explaining unsafe-inline requirement
+- 🔒 **Security:** Added filename sanitization in save function
+- 🛡️ **Reliability:** Added isComparing flag to prevent concurrent comparisons
+- 🛡️ **Reliability:** Improved FileReader error handling with detailed messages
+- 🛡️ **Reliability:** Added bounds validation in LCS backtracking
+- 🧹 **Code quality:** Validate dp matrix before accessing in backtrack function
+
+### v2.1.0 (January 2026)
 - ⚡ **Performance:** Optimized LCS algorithm with Uint8Array for large files
 - ⚡ **Performance:** Debounced scroll sync for smoother 60fps scrolling
 - ⚡ **Performance:** Array join for efficient HTML string building
