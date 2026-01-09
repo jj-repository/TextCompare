@@ -57,30 +57,25 @@ npm run build:all
 
 ## Update System
 
-**Status:** Partial implementation (check only, no download)
+**Status:** Fully implemented with settings persistence
 
-**Location:** `electron-main.js` (lines 8-109)
+**Location:** `electron-main.js`
 
 **Components:**
 - `checkForUpdates(silent)`: Fetches latest release from GitHub API
 - `versionNewer(latest, current)`: Semantic version comparison
 - Dialog with "Download Update" (opens releases page) and "Later"
+- `loadSettings()` / `saveSettings()`: Persistent settings storage
 
 **GitHub Integration:**
 - Repository: `jj-repository/TextCompare`
 - API: `https://api.github.com/repos/jj-repository/TextCompare/releases/latest`
 
-**Current Flow:**
-1. Manual check via Help menu → "Check for Updates..."
-2. Fetches latest release info
-3. Shows dialog with version info and release notes
-4. "Download Update" opens GitHub releases in browser
-
-**Missing:**
-- No auto-check on startup
-- No settings for auto_check_updates
-- No actual download functionality
-- No settings persistence
+**Features:**
+- Auto-check on startup (configurable via Help menu)
+- Settings persisted in `userData/settings.json`
+- Silent mode for startup checks (no popup if up-to-date)
+- Manual check via Help menu
 
 ## Dependencies
 
@@ -152,48 +147,22 @@ webPreferences: {
 
 ## Known Issues / Technical Debt
 
-1. **No auto-update**: Only manual check, no download capability
-2. **No settings persistence**: No preferences file for user settings
-3. **Single-file frontend**: 1500+ lines in index.html could be modularized
-4. **No IPC**: Frontend doesn't communicate with main process
+1. **No direct download**: Update opens releases page instead of downloading directly
+2. **Single-file frontend**: 1500+ lines in index.html could be modularized
+3. **No IPC**: Frontend doesn't communicate with main process for file operations
 
 ## Common Development Tasks
 
-### Adding settings persistence
-1. Create settings file in `app.getPath('userData')`
-2. Load on app startup
-3. Add IPC handlers for save/load from renderer
+### Adding IPC communication
+1. Add handlers in `electron-main.js` with `ipcMain.handle()`
+2. Expose in `preload.js` via `contextBridge.exposeInMainWorld()`
+3. Call from renderer via `window.electron.methodName()`
 
-```javascript
-const settingsPath = path.join(app.getPath('userData'), 'settings.json');
-
-function loadSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  } catch {
-    return { autoCheckUpdates: true };
-  }
-}
-```
-
-### Adding auto-update check on startup
-1. Add setting for `autoCheckUpdates`
-2. Call `checkForUpdates(true)` after window ready
-3. Add delay to avoid blocking startup
-
-```javascript
-mainWindow.once('ready-to-show', () => {
-  if (settings.autoCheckUpdates) {
-    setTimeout(() => checkForUpdates(true), 4000);
-  }
-});
-```
-
-### Adding download functionality
-1. Use `https` module to download release asset
-2. Save to temp directory
-3. Show notification when complete
-4. Open containing folder
+### Adding direct download for updates
+1. Parse release assets from GitHub API response
+2. Download appropriate binary for platform
+3. Save to temp directory with progress tracking
+4. Show notification when complete
 
 ## Platform Notes
 
