@@ -902,6 +902,7 @@
                     updateStatus();
                     if (isCompareMode) exitCompareMode();
                     statusCenter.textContent = `Loaded: ${file.name}`;
+                    event.target.value = '';  // Reset after successful load
                 };
                 reader.onerror = (e) => {
                     let errorDetail = 'Unknown error';
@@ -912,13 +913,14 @@
                     alert(`${errorMsg}\n\nError: ${errorDetail}\n\nThe file may be corrupted, too large, or have an unsupported encoding.`);
                     statusCenter.textContent = errorMsg;
                     console.error('FileReader error:', reader.error);
+                    event.target.value = '';  // Reset after error
                 };
                 reader.onabort = () => {
                     statusCenter.textContent = `Load cancelled: ${file.name}`;
                     console.log('FileReader aborted:', file.name);
+                    event.target.value = '';  // Reset after abort
                 };
                 reader.readAsText(file);
-                event.target.value = '';
             }
 
             // Save file

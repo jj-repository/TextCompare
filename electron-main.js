@@ -134,6 +134,19 @@ function checkForUpdates(silent = false) {
     }
   });
 
+  req.setTimeout(10000, () => {
+    req.destroy();
+    if (!silent) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Update Check Failed',
+        message: 'Failed to check for updates.',
+        detail: 'Request timed out after 10 seconds.',
+        buttons: ['OK']
+      });
+    }
+  });
+
   req.end();
 }
 

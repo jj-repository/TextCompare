@@ -76,6 +76,7 @@ npm run build:all
 - Settings persisted in `userData/settings.json`
 - Silent mode for startup checks (no popup if up-to-date)
 - Manual check via Help menu
+- 10-second request timeout
 
 ## Dependencies
 
