@@ -40,6 +40,12 @@ A modern, web-based text diff tool with a VS Code-inspired interface for compari
 - **Keyboard shortcuts** for power users
 - **VS Code-inspired dark theme** for comfortable viewing
 
+### Updates (Desktop App)
+- **Automatic update checking** on startup (configurable)
+- **Manual update check** via Help menu
+- **Version comparison** with release notes display
+- **One-click update** opens GitHub releases page
+
 ## Recent Improvements (v2.2.1)
 
 ### Performance Optimizations
@@ -228,7 +234,13 @@ This project is open source and available under the MIT License.
 
 ## Changelog
 
-### v2.2.1 (Latest - January 2026)
+### v2.2.2 (Latest - January 2026)
+- ✨ **Updates:** Added automatic update checking on startup (configurable)
+- ✨ **Updates:** Added "Check for Updates on Startup" toggle in Help menu
+- ✨ **Settings:** Added settings persistence to user data directory
+- 🧹 **Code quality:** Improved code organization
+
+### v2.2.1 (January 2026)
 - 🔒 **Security:** Removed inline onclick handlers, use addEventListener for CSP compliance
 - 🔒 **Security:** Added CSP comment explaining unsafe-inline requirement
 - 🔒 **Security:** Added filename sanitization in save function
