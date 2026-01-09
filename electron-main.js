@@ -12,6 +12,35 @@ const GITHUB_REPO = 'jj-repository/TextCompare';
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const GITHUB_API_LATEST = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
+// Settings file for app preferences
+const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+
+const defaultSettings = {
+  autoCheckUpdates: true
+};
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const data = fs.readFileSync(settingsFile, 'utf8');
+      return { ...defaultSettings, ...JSON.parse(data) };
+    }
+  } catch (e) {
+    console.error('Failed to load settings:', e);
+  }
+  return { ...defaultSettings };
+}
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Failed to save settings:', e);
+  }
+}
+
+let appSettings = defaultSettings;
+
 // Compare version strings
 function versionNewer(latest, current) {
   const parseVersion = (v) => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -206,6 +235,18 @@ function createWindow() {
     app.quit();
   });
 
+  // Block DevTools in production builds (packaged apps)
+  if (app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      // Block F12, Ctrl+Shift+I, Cmd+Option+I
+      if (input.key === 'F12' ||
+          (input.control && input.shift && input.key.toLowerCase() === 'i') ||
+          (input.meta && input.alt && input.key.toLowerCase() === 'i')) {
+        event.preventDefault();
+      }
+    });
+  }
+
   // Save state on window events
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
@@ -236,7 +277,8 @@ function createWindow() {
       submenu: [
         { role: 'reload' },
         { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        // Only show DevTools in development mode (not in packaged/production builds)
+        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }]),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -259,6 +301,15 @@ function createWindow() {
           label: 'Check for Updates...',
           click: () => {
             checkForUpdates(false);
+          }
+        },
+        {
+          label: 'Check for Updates on Startup',
+          type: 'checkbox',
+          checked: appSettings.autoCheckUpdates,
+          click: (menuItem) => {
+            appSettings.autoCheckUpdates = menuItem.checked;
+            saveSettings(appSettings);
           }
         },
         { type: 'separator' },
@@ -291,7 +342,19 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Load settings before creating window
+  appSettings = loadSettings();
+
+  createWindow();
+
+  // Check for updates on startup if enabled (with delay)
+  if (appSettings.autoCheckUpdates) {
+    setTimeout(() => {
+      checkForUpdates(true);
+    }, 4000);  // 4 second delay to let UI initialize
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
