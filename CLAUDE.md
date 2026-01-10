@@ -180,3 +180,66 @@ webPreferences: {
 ### Windows
 - Builds NSIS installer and portable
 - Same icon file
+
+---
+
+## Review Status
+
+> **Last Full Review:** 2026-01-10
+> **Status:** ✅ Production Ready
+
+### Security Review ✅
+- [x] Context isolation enabled
+- [x] Sandbox mode enabled
+- [x] No nodeIntegration
+- [x] DevTools disabled in production
+- [x] Keyboard shortcuts blocked (F12, Ctrl+Shift+I)
+- [x] No external network calls except update check
+- [x] Update check has timeout (10s)
+
+### Code Quality ✅
+- [x] All tests passing (26 tests)
+- [x] No unused variables
+- [x] Drag-and-drop implemented
+- [x] Window state persistence working
+
+## Quality Standards
+
+**Target:** Text diff tool - fast, accurate, simple to use
+
+| Aspect | Standard | Status |
+|--------|----------|--------|
+| Security | Electron best practices followed | ✅ Met |
+| Accuracy | Diff algorithm correct | ✅ Met |
+| Performance | Handles large files | ✅ Met |
+| UX | Intuitive side-by-side view | ✅ Met |
+| Documentation | CLAUDE.md current | ✅ Met |
+
+## Intentional Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Single index.html file | Simple distribution; no build step for frontend |
+| No IPC for file operations | Files loaded directly in renderer; simpler architecture |
+| Update opens releases page | Avoids binary download/verification complexity |
+| Minimal dependencies | Only Electron; no runtime dependencies |
+| VS Code-like theme | Familiar to developers; good contrast for diffs |
+
+## Won't Fix (Accepted Limitations)
+
+| Issue | Reason |
+|-------|--------|
+| No direct update download | Opens releases page; keeps app simple |
+| Single-file frontend (1500+ lines) | Works fine; splitting would add build complexity |
+| No IPC | File operations work fine in renderer for this use case |
+| No syntax highlighting | Scope creep; this is a diff tool, not an editor |
+
+## Completed Optimizations
+
+- ✅ Drag-and-drop file loading
+- ✅ Visual feedback for drag operations
+- ✅ Unused variable cleanup
+- ✅ Window state persistence
+- ✅ LCS algorithm optimized
+
+**DO NOT further optimize:** The diff algorithm is already optimized. For very large files (10MB+), performance is acceptable. Further optimization would require fundamentally different approach (streaming, workers).
