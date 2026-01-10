@@ -81,7 +81,7 @@ function checkForUpdates(silent = false) {
         const latestVersion = (release.tag_name || '').replace(/^v/, '');
 
         if (!latestVersion) {
-          if (!silent) {
+          if (!silent && mainWindow) {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'Update Check',
@@ -93,6 +93,8 @@ function checkForUpdates(silent = false) {
         }
 
         if (versionNewer(latestVersion, APP_VERSION)) {
+          // Window may have been closed during async operation
+          if (!mainWindow) return;
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Update Available',
@@ -105,7 +107,7 @@ function checkForUpdates(silent = false) {
               shell.openExternal(GITHUB_RELEASES_URL);
             }
           });
-        } else if (!silent) {
+        } else if (!silent && mainWindow) {
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'No Updates',
@@ -114,7 +116,7 @@ function checkForUpdates(silent = false) {
           });
         }
       } catch (e) {
-        if (!silent) {
+        if (!silent && mainWindow) {
           dialog.showMessageBox(mainWindow, {
             type: 'error',
             title: 'Update Check Failed',
@@ -128,7 +130,7 @@ function checkForUpdates(silent = false) {
   });
 
   req.on('error', (e) => {
-    if (!silent) {
+    if (!silent && mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: 'error',
         title: 'Update Check Failed',
@@ -141,7 +143,7 @@ function checkForUpdates(silent = false) {
 
   req.setTimeout(10000, () => {
     req.destroy();
-    if (!silent) {
+    if (!silent && mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: 'error',
         title: 'Update Check Failed',
