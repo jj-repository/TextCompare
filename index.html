@@ -260,6 +260,11 @@
             color: #6a6a6a;
         }
 
+        .text-input.drag-over {
+            background: rgba(86, 156, 214, 0.1);
+            outline: 2px dashed #569cd6;
+        }
+
         .diff-view {
             flex: 1;
             background: #1e1e1e;
@@ -795,6 +800,31 @@
                 leftFileInput.addEventListener('change', (e) => handleFileLoad(e, 'left'));
                 rightFileInput.addEventListener('change', (e) => handleFileLoad(e, 'right'));
 
+                // Drag-and-drop file support
+                function setupDragDrop(element, side) {
+                    element.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        element.classList.add('drag-over');
+                    });
+                    element.addEventListener('dragleave', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        element.classList.remove('drag-over');
+                    });
+                    element.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        element.classList.remove('drag-over');
+                        const files = e.dataTransfer.files;
+                        if (files.length > 0) {
+                            handleFileDrop(files[0], side);
+                        }
+                    });
+                }
+                setupDragDrop(leftText, 'left');
+                setupDragDrop(rightText, 'right');
+
                 // Keyboard shortcuts
                 document.addEventListener('keydown', handleKeyboard);
 
@@ -919,6 +949,54 @@
                     statusCenter.textContent = `Load cancelled: ${file.name}`;
                     console.log('FileReader aborted:', file.name);
                     event.target.value = '';  // Reset after abort
+                };
+                reader.readAsText(file);
+            }
+
+            // Handle file drop from drag-and-drop
+            function handleFileDrop(file, side) {
+                if (!file) return;
+
+                // Validate file size
+                if (file.size > MAX_FILE_SIZE) {
+                    const sizeMB = (file.size / BYTES_PER_MB).toFixed(2);
+                    const maxSizeMB = MAX_FILE_SIZE_MB;
+                    const proceed = confirm(
+                        `Warning: File size is ${sizeMB}MB, which exceeds the recommended limit of ${maxSizeMB}MB.\n\n` +
+                        `Large files may cause the browser to freeze during comparison.\n\n` +
+                        `Do you want to continue?`
+                    );
+                    if (!proceed) return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    if (side === 'left') {
+                        leftText.value = text;
+                        leftFilename.textContent = file.name;
+                    } else {
+                        rightText.value = text;
+                        rightFilename.textContent = file.name;
+                    }
+                    updateLineNumbers(side);
+                    updateStatus();
+                    if (isCompareMode) exitCompareMode();
+                    statusCenter.textContent = `Loaded: ${file.name}`;
+                };
+                reader.onerror = () => {
+                    let errorDetail = 'Unknown error';
+                    if (reader.error) {
+                        errorDetail = reader.error.message || reader.error.name || 'Unknown error';
+                    }
+                    const errorMsg = `Failed to load file: ${file.name}`;
+                    alert(`${errorMsg}\n\nError: ${errorDetail}\n\nThe file may be corrupted, too large, or have an unsupported encoding.`);
+                    statusCenter.textContent = errorMsg;
+                    console.error('FileReader error:', reader.error);
+                };
+                reader.onabort = () => {
+                    statusCenter.textContent = `Load cancelled: ${file.name}`;
+                    console.log('FileReader aborted:', file.name);
                 };
                 reader.readAsText(file);
             }

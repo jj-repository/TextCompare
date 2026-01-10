@@ -152,6 +152,12 @@ webPreferences: {
 2. **Single-file frontend**: 1500+ lines in index.html could be modularized
 3. **No IPC**: Frontend doesn't communicate with main process for file operations
 
+## Recent Fixes (January 2026)
+
+- Removed unused `div` variable in escapeHtml() function (diff-utils.js)
+- Implemented drag-and-drop file support with visual feedback (was documented but not implemented)
+- Added .drag-over CSS styling for drag-drop visual feedback
+
 ## Common Development Tasks
 
 ### Adding IPC communication

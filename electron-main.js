@@ -33,6 +33,11 @@ function loadSettings() {
 
 function saveSettings(settings) {
   try {
+    // Ensure the directory exists before writing
+    const dir = path.dirname(settingsFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
   } catch (e) {
     console.error('Failed to save settings:', e);

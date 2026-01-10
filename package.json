@@ -13,6 +13,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "test": "node src/diff-utils.test.js",
     "build": "electron-builder",
     "build:linux": "electron-builder --linux",
     "build:win": "electron-builder --win",
