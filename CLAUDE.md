@@ -157,6 +157,7 @@ webPreferences: {
 - Removed unused `div` variable in escapeHtml() function (diff-utils.js)
 - Implemented drag-and-drop file support with visual feedback (was documented but not implemented)
 - Added .drag-over CSS styling for drag-drop visual feedback
+- Fixed null reference error when window closes during update check (added mainWindow checks)
 
 ## Common Development Tasks
 
