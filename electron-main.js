@@ -61,6 +61,47 @@ function versionNewer(latest, current) {
   return false;
 }
 
+// Handle parsed update response
+function handleUpdateResponse(release, silent) {
+  const latestVersion = (release.tag_name || '').replace(/^v/, '');
+
+  if (!latestVersion) {
+    if (!silent && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Check',
+        message: 'Could not determine latest version.',
+        buttons: ['OK']
+      });
+    }
+    return;
+  }
+
+  if (versionNewer(latestVersion, APP_VERSION)) {
+    // Window may have been closed during async operation
+    if (!mainWindow) return;
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Available',
+      message: `A new version is available!\n\nCurrent: v${APP_VERSION}\nLatest: v${latestVersion}`,
+      detail: release.body || 'No release notes available.',
+      buttons: ['Download Update', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        shell.openExternal(GITHUB_RELEASES_URL);
+      }
+    });
+  } else if (!silent && mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Updates',
+      message: `You are running the latest version (v${APP_VERSION}).`,
+      buttons: ['OK']
+    });
+  }
+}
+
 // Check for updates
 function checkForUpdates(silent = false) {
   const options = {
@@ -73,48 +114,106 @@ function checkForUpdates(silent = false) {
   };
 
   const req = https.request(options, (res) => {
-    let data = '';
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      try {
-        const release = JSON.parse(data);
-        const latestVersion = (release.tag_name || '').replace(/^v/, '');
-
-        if (!latestVersion) {
+    // Handle redirects (301/302)
+    if (res.statusCode === 301 || res.statusCode === 302) {
+      const redirectUrl = res.headers.location;
+      if (redirectUrl) {
+        res.resume(); // Consume response to free memory
+        https.get(redirectUrl, { headers: options.headers }, (redirectRes) => {
+          if (redirectRes.statusCode !== 200) {
+            redirectRes.resume();
+            if (!silent && mainWindow) {
+              dialog.showMessageBox(mainWindow, {
+                type: 'error',
+                title: 'Update Check Failed',
+                message: 'Failed to check for updates.',
+                detail: `Redirect returned status ${redirectRes.statusCode}.`,
+                buttons: ['OK']
+              });
+            }
+            return;
+          }
+          let rData = '';
+          let rSize = 0;
+          const MAX_SIZE = 1024 * 1024; // 1MB limit
+          redirectRes.on('data', chunk => {
+            rSize += chunk.length;
+            if (rSize > MAX_SIZE) {
+              redirectRes.destroy();
+              return;
+            }
+            rData += chunk;
+          });
+          redirectRes.on('end', () => {
+            try {
+              const release = JSON.parse(rData);
+              handleUpdateResponse(release, silent);
+            } catch (e) {
+              if (!silent && mainWindow) {
+                dialog.showMessageBox(mainWindow, {
+                  type: 'error',
+                  title: 'Update Check Failed',
+                  message: 'Failed to check for updates.',
+                  detail: e.message,
+                  buttons: ['OK']
+                });
+              }
+            }
+          });
+        }).on('error', (e) => {
           if (!silent && mainWindow) {
             dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'Update Check',
-              message: 'Could not determine latest version.',
+              type: 'error',
+              title: 'Update Check Failed',
+              message: 'Failed to check for updates.',
+              detail: e.message,
               buttons: ['OK']
             });
           }
-          return;
-        }
+        });
+      }
+      return;
+    }
 
-        if (versionNewer(latestVersion, APP_VERSION)) {
-          // Window may have been closed during async operation
-          if (!mainWindow) return;
+    // Reject non-200 responses
+    if (res.statusCode !== 200) {
+      res.resume();
+      if (!silent && mainWindow) {
+        dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          title: 'Update Check Failed',
+          message: 'Failed to check for updates.',
+          detail: `Server returned status ${res.statusCode}.`,
+          buttons: ['OK']
+        });
+      }
+      return;
+    }
+
+    let data = '';
+    let totalSize = 0;
+    const MAX_RESPONSE_SIZE = 1024 * 1024; // 1MB limit
+    res.on('data', chunk => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_RESPONSE_SIZE) {
+        res.destroy();
+        if (!silent && mainWindow) {
           dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Update Available',
-            message: `A new version is available!\n\nCurrent: v${APP_VERSION}\nLatest: v${latestVersion}`,
-            detail: release.body || 'No release notes available.',
-            buttons: ['Download Update', 'Later'],
-            defaultId: 0
-          }).then(result => {
-            if (result.response === 0) {
-              shell.openExternal(GITHUB_RELEASES_URL);
-            }
-          });
-        } else if (!silent && mainWindow) {
-          dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'No Updates',
-            message: `You are running the latest version (v${APP_VERSION}).`,
+            type: 'error',
+            title: 'Update Check Failed',
+            message: 'Failed to check for updates.',
+            detail: 'Response exceeded 1MB size limit.',
             buttons: ['OK']
           });
         }
+        return;
+      }
+      data += chunk;
+    });
+    res.on('end', () => {
+      try {
+        const release = JSON.parse(data);
+        handleUpdateResponse(release, silent);
       } catch (e) {
         if (!silent && mainWindow) {
           dialog.showMessageBox(mainWindow, {
@@ -342,7 +441,9 @@ function createWindow() {
         {
           label: 'About TextCompare',
           click: () => {
-            dialog.showMessageBox(mainWindow, {
+            const win = mainWindow || BrowserWindow.getFocusedWindow();
+            if (!win) return;
+            dialog.showMessageBox(win, {
               type: 'info',
               title: 'About TextCompare',
               message: `TextCompare v${APP_VERSION}`,

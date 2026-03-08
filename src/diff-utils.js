@@ -54,6 +54,11 @@ function computeLCSFullMatrix(a, b) {
 function computeLCSSpaceOptimized(a, b) {
     const m = a.length, n = b.length;
 
+    if (m * n > 50_000_000) { // ~50MB limit for Uint8Array
+        // Fall back to a simpler line-by-line comparison
+        return [];  // Empty LCS triggers full diff display
+    }
+
     // Use two rows instead of full matrix
     let prev = new Array(n + 1).fill(0);
     let curr = new Array(n + 1).fill(0);

@@ -1125,6 +1125,11 @@
             function computeLCSSpaceOptimized(a, b) {
                 const m = a.length, n = b.length;
 
+                if (m * n > 50_000_000) { // ~50MB limit for Uint8Array
+                    // Fall back to a simpler line-by-line comparison
+                    return [];  // Empty LCS triggers full diff display
+                }
+
                 // Use two rows instead of full matrix
                 let prev = new Array(n + 1).fill(0);
                 let curr = new Array(n + 1).fill(0);
@@ -1252,6 +1257,15 @@
                     } else if (ri < rightLines.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
                         result.push({ type: 'added', rightLine: ri, right: rightLines[ri] });
                         ri++;
+                    } else {
+                        // Safety: force progress to prevent infinite loop
+                        if (li < leftLines.length) {
+                            result.push({ left: leftLines[li], right: '', type: 'removed' });
+                            li++;
+                        } else if (ri < rightLines.length) {
+                            result.push({ left: '', right: rightLines[ri], type: 'added' });
+                            ri++;
+                        }
                     }
                 }
 
@@ -1439,10 +1453,20 @@
 
                 // Add highlight to current diff
                 const diffLines = document.querySelectorAll(`[data-diff="${currentDiffIndex}"]`);
+                let scrolledLeft = false;
                 diffLines.forEach(el => {
                     el.classList.add('current');
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Only scrollIntoView on the left panel element to avoid scroll fighting;
+                    // the scroll sync handler will update the right panel.
+                    if (!scrolledLeft && el.closest('.diff-pane:first-child, .diff-pane-left, #leftPanel, [class*="left"]')) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        scrolledLeft = true;
+                    }
                 });
+                // Fallback: if no left-panel element was found, scroll the first element
+                if (!scrolledLeft && diffLines.length > 0) {
+                    diffLines[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
 
                 updateDiffCounter();
             }
