@@ -6,13 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TextCompare** is an Electron desktop application for comparing text with side-by-side diff visualization. It features an optimized LCS (Longest Common Subsequence) algorithm, minimap navigation, and a VS Code-inspired dark theme.
 
-**Version:** 2.2.2
+**Version:** 2.2.6
 
 ## Files Structure
 
 ```
 TextCompare/
 ├── electron-main.js       # Electron main process (window, menu, updates)
+├── preload.js             # Context bridge for IPC (update checking)
 ├── index.html             # Single-file frontend (HTML + CSS + JS)
 ├── package.json           # Dependencies and build config
 ├── icon.png               # Application icon
@@ -43,6 +44,7 @@ npm run build:all
 ### Simple Two-File Design
 
 - **electron-main.js**: Electron main process with window management, menus, and update checking
+- **preload.js**: Context bridge exposing IPC for update checking to the renderer
 - **index.html**: Complete frontend in a single file (1500+ lines of HTML/CSS/JS)
 
 ### Key Features
@@ -132,6 +134,7 @@ webPreferences: {
 - **View**: Reload, Toggle Fullscreen, Zoom
 - **Window**: Minimize, Zoom, Close
 - **Help**: Check for Updates, About
+- **Toolbar**: Includes an "Updates" button for in-app update checking via IPC
 
 ## Build Configuration
 
@@ -150,7 +153,7 @@ webPreferences: {
 
 1. **No direct download**: Update opens releases page instead of downloading directly
 2. **Single-file frontend**: 1500+ lines in index.html could be modularized
-3. **No IPC**: Frontend doesn't communicate with main process for file operations
+3. **Limited IPC**: IPC used for update checking; file operations still handled directly in renderer
 
 ## Recent Fixes (January 2026)
 
@@ -221,7 +224,7 @@ webPreferences: {
 | Decision | Rationale |
 |----------|-----------|
 | Single index.html file | Simple distribution; no build step for frontend |
-| No IPC for file operations | Files loaded directly in renderer; simpler architecture |
+| IPC only for updates | Files loaded directly in renderer; IPC used for update checking |
 | Update opens releases page | Avoids binary download/verification complexity |
 | Minimal dependencies | Only Electron; no runtime dependencies |
 | VS Code-like theme | Familiar to developers; good contrast for diffs |
@@ -232,7 +235,7 @@ webPreferences: {
 |-------|--------|
 | No direct update download | Opens releases page; keeps app simple |
 | Single-file frontend (1500+ lines) | Works fine; splitting would add build complexity |
-| No IPC | File operations work fine in renderer for this use case |
+| No IPC for file operations | File operations work fine in renderer for this use case |
 | No syntax highlighting | Scope creep; this is a diff tool, not an editor |
 
 ## Completed Optimizations
