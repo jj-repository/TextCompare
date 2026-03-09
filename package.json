@@ -1,6 +1,6 @@
 {
   "name": "textcompare",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
   "repository": {
@@ -46,7 +46,8 @@
     "productName": "TextCompare",
     "files": [
       "index.html",
-      "electron-main.js"
+      "electron-main.js",
+      "preload.js"
     ],
     "linux": {
       "target": [

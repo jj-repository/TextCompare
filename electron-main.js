@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, screen } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -337,7 +337,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'icon.png'),
     title: 'TextCompare - Text Diff Tool'
@@ -370,6 +371,11 @@ function createWindow() {
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
   mainWindow.on('close', saveWindowState);
+
+  // IPC handlers
+  ipcMain.handle('check-for-updates', () => {
+    checkForUpdates(false);
+  });
 
   // Create application menu
   const menu = Menu.buildFromTemplate([

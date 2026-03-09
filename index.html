@@ -610,6 +610,10 @@
             <span>Clear All</span>
         </button>
 
+        <button class="btn btn-secondary" id="btnCheckUpdates" title="Check for Updates">
+            <span>Updates</span>
+        </button>
+
         <button class="btn btn-secondary" id="btnHelp" title="Help">
             <span>?</span>
         </button>
@@ -837,6 +841,11 @@
                 document.getElementById('btnNext').addEventListener('click', nextDiff);
                 document.getElementById('btnSwap').addEventListener('click', swapPanels);
                 document.getElementById('btnClearAll').addEventListener('click', clearAll);
+                document.getElementById('btnCheckUpdates').addEventListener('click', function() {
+                    if (window.electron && window.electron.checkForUpdates) {
+                        window.electron.checkForUpdates();
+                    }
+                });
                 document.getElementById('btnHelp').addEventListener('click', showHelp);
                 document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
 
