@@ -276,6 +276,7 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            cursor: text;
         }
 
         .diff-line {
@@ -799,6 +800,20 @@
                 rightText.addEventListener('scroll', () => debouncedSyncScroll('right'));
                 leftDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('left'));
                 rightDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('right'));
+
+                // Click on diff view to exit compare mode and edit
+                leftDiff.addEventListener('click', () => {
+                    if (isCompareMode) {
+                        exitCompareMode();
+                        leftText.focus();
+                    }
+                });
+                rightDiff.addEventListener('click', () => {
+                    if (isCompareMode) {
+                        exitCompareMode();
+                        rightText.focus();
+                    }
+                });
 
                 // File input handlers
                 leftFileInput.addEventListener('change', (e) => handleFileLoad(e, 'left'));
