@@ -29,7 +29,7 @@
          with embedded JS/CSS. Inline onclick handlers have been removed in favor of
          addEventListener for better security hygiene. For full CSP compliance without
          'unsafe-inline', the JS/CSS would need to be split into separate files. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self'; connect-src 'none'; frame-src 'none';">
     <title>TextCompare - Text Diff Tool</title>
     <style>
         * {
@@ -110,6 +110,15 @@
 
         .btn-danger:hover {
             background: #e03e2f;
+        }
+
+        .btn-help {
+            background: #b8860b;
+            color: white;
+        }
+
+        .btn-help:hover {
+            background: #d4a017;
         }
 
         .btn-nav {
@@ -285,18 +294,6 @@
             border-radius: 2px;
         }
 
-        .diff-line.added {
-            background: rgba(35, 134, 54, 0.2);
-        }
-
-        .diff-line.removed {
-            background: rgba(218, 54, 51, 0.2);
-        }
-
-        .diff-line.modified {
-            background: rgba(227, 180, 72, 0.15);
-        }
-
         .diff-line.current {
             outline: 2px solid #569cd6;
         }
@@ -307,6 +304,15 @@
             text-decoration: underline;
             text-decoration-color: #ff4444;
             text-decoration-thickness: 2px;
+        }
+
+        .diff-char-missing {
+            background: rgba(218, 54, 51, 0.35);
+            display: inline-block;
+            min-width: 8px;
+            height: 1em;
+            vertical-align: text-bottom;
+            border-radius: 1px;
         }
 
         /* Thumbnail / Mini-map */
@@ -401,7 +407,6 @@
             display: flex;
             gap: 15px;
             font-size: 0.8rem;
-            margin-left: auto;
         }
 
         .legend-item {
@@ -416,16 +421,8 @@
             border-radius: 2px;
         }
 
-        .legend-color.added {
-            background: rgba(35, 134, 54, 0.6);
-        }
-
         .legend-color.removed {
             background: rgba(218, 54, 51, 0.6);
-        }
-
-        .legend-color.changed {
-            background: rgba(218, 54, 51, 0.8);
         }
 
         /* Loading overlay */
@@ -603,33 +600,33 @@
 
         <div class="separator"></div>
 
-        <button class="btn btn-secondary" id="btnSwap" title="Swap left and right">
-            <span>Swap</span>
+        <button class="btn btn-secondary" id="btnSwap" title="Swap left and right text">
+            <span>Swap Text</span>
         </button>
 
         <button class="btn btn-danger" id="btnClearAll" title="Clear all">
             <span>Clear All</span>
         </button>
 
-        <button class="btn btn-secondary" id="btnCheckUpdates" title="Check for Updates">
-            <span>Updates</span>
-        </button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+            <button class="btn btn-secondary" id="btnSettings" title="Settings">
+                <span>Settings</span>
+            </button>
+            <button class="btn btn-help" id="btnHelp" title="Help">
+                <span>HELP</span>
+            </button>
+        </div>
+    </div>
 
-        <button class="btn btn-secondary" id="btnHelp" title="Help">
-            <span>?</span>
+    <div class="toolbar" style="padding: 4px 20px; min-height: 0; justify-content: center;">
+        <button class="btn btn-secondary btn-small" id="btnUndo" title="Undo (Ctrl+Z)">
+            <span>Undo</span>
         </button>
 
         <div class="legend">
             <div class="legend-item">
-                <div class="legend-color added"></div>
-                <span>Added</span>
-            </div>
-            <div class="legend-item">
                 <div class="legend-color removed"></div>
-                <span>Removed</span>
-            </div>
-            <div class="legend-item">
-                <span style="color: #ff6b6b; text-decoration: underline red 2px;">Changed</span>
+                <span>Different Value</span>
             </div>
         </div>
     </div>
@@ -696,6 +693,17 @@
         </div>
     </div>
 
+    <!-- Download Progress Overlay -->
+    <div class="loading-overlay" id="downloadOverlay">
+        <div class="loading-spinner">
+            <div id="downloadFileName" style="margin-bottom: 10px; color: #569cd6;"></div>
+            <div style="width: 250px; height: 6px; background: #404040; border-radius: 3px; overflow: hidden;">
+                <div id="downloadBar" style="width: 0%; height: 100%; background: #569cd6; transition: width 0.2s;"></div>
+            </div>
+            <div id="downloadPercent" style="margin-top: 8px;">Downloading... 0%</div>
+        </div>
+    </div>
+
     <!-- Help Modal -->
     <div class="modal-overlay" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
         <div class="modal">
@@ -704,25 +712,48 @@
             <p>1. Load or paste text into both panels</p>
             <p>2. Click "Compare" to see differences</p>
             <p>3. Use Prev/Next to navigate between changes</p>
+            <p>4. Double-click on the diff view to go back to editing</p>
             <p><strong>Keyboard shortcuts:</strong></p>
             <p>- <kbd>Ctrl+Enter</kbd> - Compare</p>
             <p>- <kbd>Ctrl+Up</kbd> - Previous difference</p>
             <p>- <kbd>Ctrl+Down</kbd> - Next difference</p>
+            <p>- <kbd>Ctrl+Z</kbd> - Undo</p>
             <p>- <kbd>Ctrl+S</kbd> - Save right file</p>
             <p>- <kbd>Ctrl+Shift+S</kbd> - Save left file</p>
+            <p>- <kbd>Escape</kbd> - Exit compare mode</p>
             <p><strong>Color coding:</strong></p>
-            <p>- <span style="color: #7ee787;">Green</span> - Added lines/text</p>
-            <p>- <span style="color: #ff7b72;">Red</span> - Removed lines/text</p>
-            <p>- <span style="color: #ff6b6b; text-decoration: underline red;">Red underline</span> - Changed characters</p>
+            <p>- <span style="color: #ff6b6b; background: rgba(218, 54, 51, 0.5); padding: 0 4px;">Red</span> - Different characters between left and right</p>
             <p><strong>Limitations:</strong></p>
             <p>- Recommended file size limit: 10MB</p>
-            <p>- Large files may cause browser slowdown</p>
-            <p>- Files are processed client-side (nothing uploaded to server)</p>
-            <p><strong>Browser compatibility:</strong></p>
-            <p>- Modern browsers with ES6 support (Chrome 51+, Firefox 54+, Safari 10+, Edge 15+)</p>
-            <p>- Requires FileReader API and CSS Flexbox support</p>
+            <p>- Files are processed locally (nothing uploaded)</p>
+            <p style="margin-top: 15px;"><a href="#" id="helpGithubLink" style="color: #569cd6;">View on GitHub / Install Instructions</a></p>
             <div class="modal-actions">
                 <button class="btn btn-primary" id="btnCloseHelp">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal">
+            <h2 id="settingsModalTitle">Settings</h2>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <label class="checkbox-label" style="font-size: 0.95rem;">
+                    <input type="checkbox" id="settingsAutoUpdate" checked>
+                    Auto-Update Check on startup
+                </label>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" id="btnSettingsCheckUpdates">Check for Updates</button>
+                    <button class="btn btn-secondary" id="btnSettingsReadme">Readme</button>
+                </div>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <img src="takodachi.webp" alt="" style="max-width: 120px; border-radius: 8px; opacity: 0.8;">
+                <div style="margin-top: 6px; color: #888; font-size: 0.8rem;">by JJ</div>
+                <div id="settingsVersion" style="margin-top: 4px; color: #666; font-size: 0.75rem;"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="btnCloseSettings">Close</button>
             </div>
         </div>
     </div>
@@ -801,14 +832,14 @@
                 leftDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('left'));
                 rightDiff.addEventListener('scroll', () => debouncedSyncScrollDiff('right'));
 
-                // Click on diff view to exit compare mode and edit
-                leftDiff.addEventListener('click', () => {
+                // Double-click on diff view to exit compare mode and edit
+                leftDiff.addEventListener('dblclick', () => {
                     if (isCompareMode) {
                         exitCompareMode();
                         leftText.focus();
                     }
                 });
-                rightDiff.addEventListener('click', () => {
+                rightDiff.addEventListener('dblclick', () => {
                     if (isCompareMode) {
                         exitCompareMode();
                         rightText.focus();
@@ -855,14 +886,80 @@
                 document.getElementById('btnPrev').addEventListener('click', prevDiff);
                 document.getElementById('btnNext').addEventListener('click', nextDiff);
                 document.getElementById('btnSwap').addEventListener('click', swapPanels);
-                document.getElementById('btnClearAll').addEventListener('click', clearAll);
-                document.getElementById('btnCheckUpdates').addEventListener('click', function() {
+                document.getElementById('btnClearAll').addEventListener('click', () => {
+                    if (confirm('Clear all text on both sides?')) {
+                        clearAll();
+                    }
+                });
+                document.getElementById('btnUndo').addEventListener('click', () => {
+                    document.execCommand('undo');
+                });
+
+                // Download progress from main process
+                if (window.electron && window.electron.onDownloadProgress) {
+                    window.electron.onDownloadProgress((data) => {
+                        const overlay = document.getElementById('downloadOverlay');
+                        if (!data) {
+                            overlay.classList.remove('active');
+                            return;
+                        }
+                        overlay.classList.add('active');
+                        document.getElementById('downloadBar').style.width = data.percent + '%';
+                        document.getElementById('downloadPercent').textContent = 'Downloading... ' + data.percent + '%';
+                        document.getElementById('downloadFileName').textContent = data.fileName;
+                    });
+                }
+
+                // Help modal
+                document.getElementById('btnHelp').addEventListener('click', showHelp);
+                document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
+                document.getElementById('helpGithubLink').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (window.electron && window.electron.openExternal) {
+                        window.electron.openExternal('https://github.com/jj-repository/TextCompare#readme');
+                    } else {
+                        window.open('https://github.com/jj-repository/TextCompare#readme', '_blank');
+                    }
+                });
+
+                // Settings modal
+                const settingsModal = document.getElementById('settingsModal');
+                document.getElementById('btnSettings').addEventListener('click', () => {
+                    settingsModal.style.display = 'flex';
+                });
+                document.getElementById('btnCloseSettings').addEventListener('click', () => {
+                    settingsModal.style.display = 'none';
+                });
+                settingsModal.addEventListener('click', (e) => {
+                    if (e.target === settingsModal) settingsModal.style.display = 'none';
+                });
+                document.getElementById('btnSettingsCheckUpdates').addEventListener('click', () => {
                     if (window.electron && window.electron.checkForUpdates) {
                         window.electron.checkForUpdates();
                     }
                 });
-                document.getElementById('btnHelp').addEventListener('click', showHelp);
-                document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
+                document.getElementById('btnSettingsReadme').addEventListener('click', () => {
+                    if (window.electron && window.electron.openExternal) {
+                        window.electron.openExternal('https://github.com/jj-repository/TextCompare#readme');
+                    } else {
+                        window.open('https://github.com/jj-repository/TextCompare#readme', '_blank');
+                    }
+                });
+                // Auto-update checkbox synced with electron settings
+                const autoUpdateCheckbox = document.getElementById('settingsAutoUpdate');
+                if (window.electron && window.electron.getSettings) {
+                    window.electron.getSettings().then(settings => {
+                        autoUpdateCheckbox.checked = settings.autoCheckUpdates;
+                        if (settings.version) {
+                            document.getElementById('settingsVersion').textContent = 'v' + settings.version;
+                        }
+                    });
+                }
+                autoUpdateCheckbox.addEventListener('change', () => {
+                    if (window.electron && window.electron.setAutoUpdate) {
+                        window.electron.setAutoUpdate(autoUpdateCheckbox.checked);
+                    }
+                });
 
                 // Left panel button handlers
                 document.getElementById('btnLoadLeft').addEventListener('click', () => loadFile('left'));
@@ -1242,62 +1339,10 @@
                 return result;
             }
 
-            function diffLines(leftLines, rightLines) {
-                const ignoreWhitespace = ignoreWhitespaceCheckbox.checked;
-                const ignoreCase = ignoreCaseCheckbox.checked;
-
-                const processLine = (line) => {
-                    let processed = line;
-                    if (ignoreWhitespace) processed = processed.replace(/\s+/g, ' ').trim();
-                    if (ignoreCase) processed = processed.toLowerCase();
-                    return processed;
-                };
-
-                const leftProcessed = leftLines.map(processLine);
-                const rightProcessed = rightLines.map(processLine);
-
-                const lcsResult = computeLCSOptimized(leftProcessed, rightProcessed);
-                const lcs = backtrackLCS(lcsResult, leftProcessed, rightProcessed);
-
-                const result = [];
-                let li = 0, ri = 0, lcsIdx = 0;
-
-                while (li < leftLines.length || ri < rightLines.length) {
-                    if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
-                        // Check if lines are actually equal (considering original case/whitespace)
-                        if (leftLines[li] === rightLines[ri]) {
-                            result.push({ type: 'equal', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                        } else {
-                            result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                        }
-                        li++; ri++; lcsIdx++;
-                    } else if (lcsIdx < lcs.length && li < lcs[lcsIdx].left && ri < lcs[lcsIdx].right) {
-                        // Both have content before next match - could be modifications
-                        result.push({ type: 'modified', leftLine: li, rightLine: ri, left: leftLines[li], right: rightLines[ri] });
-                        li++; ri++;
-                    } else if (li < leftLines.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) {
-                        result.push({ type: 'removed', leftLine: li, left: leftLines[li] });
-                        li++;
-                    } else if (ri < rightLines.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) {
-                        result.push({ type: 'added', rightLine: ri, right: rightLines[ri] });
-                        ri++;
-                    } else {
-                        // Safety: force progress to prevent infinite loop
-                        if (li < leftLines.length) {
-                            result.push({ left: leftLines[li], right: '', type: 'removed' });
-                            li++;
-                        } else if (ri < rightLines.length) {
-                            result.push({ left: '', right: rightLines[ri], type: 'added' });
-                            ri++;
-                        }
-                    }
-                }
-
-                return result;
-            }
-
             function diffChars(left, right) {
-                if (!left || !right) return { left: left || '', right: right || '' };
+                if (left === right) return { left: escapeHtml(left), right: escapeHtml(right) };
+                if (!left && right) return { left: '<span class="diff-char-missing"></span>', right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>' };
+                if (left && !right) return { left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>', right: '<span class="diff-char-missing"></span>' };
 
                 const leftChars = left.split('');
                 const rightChars = right.split('');
@@ -1322,9 +1367,15 @@
                         }
                         if (leftChunk) {
                             leftHtml += `<span class="diff-char-changed">${escapeHtml(leftChunk)}</span>`;
+                        } else if (rightChunk) {
+                            // Other side has chars, this side is missing — show red gap
+                            leftHtml += `<span class="diff-char-missing"></span>`;
                         }
                         if (rightChunk) {
                             rightHtml += `<span class="diff-char-changed">${escapeHtml(rightChunk)}</span>`;
+                        } else if (leftChunk) {
+                            // Other side has chars, this side is missing — show red gap
+                            rightHtml += `<span class="diff-char-missing"></span>`;
                         }
                     }
                 }
@@ -1333,9 +1384,11 @@
             }
 
             function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+                return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
             }
 
             // Main compare function
@@ -1354,8 +1407,18 @@
                     try {
                         const leftLines = leftText.value.split('\n');
                         const rightLines = rightText.value.split('\n');
+                        const maxLines = Math.max(leftLines.length, rightLines.length);
+                        const ignoreWS = ignoreWhitespaceCheckbox.checked;
+                        const ignoreC = ignoreCaseCheckbox.checked;
 
-                        const diff = diffLines(leftLines, rightLines);
+                        // Normalize a line for comparison (original kept for display)
+                        const normalize = (line) => {
+                            let s = line;
+                            if (ignoreWS) s = s.replace(/\s+/g, ' ').trim();
+                            if (ignoreC) s = s.toLowerCase();
+                            return s;
+                        };
+
                         differences = [];
                         currentDiffIndex = -1;
 
@@ -1364,49 +1427,46 @@
                         const rightHtmlParts = [];
                         const leftLineNumParts = [];
                         const rightLineNumParts = [];
-                        let leftLineNum = 0, rightLineNum = 0;
 
-                        diff.forEach((d) => {
-                            let diffIdx = -1;
+                        // Positional line-by-line comparison
+                        for (let i = 0; i < maxLines; i++) {
+                            const leftLine = i < leftLines.length ? leftLines[i] : undefined;
+                            const rightLine = i < rightLines.length ? rightLines[i] : undefined;
+                            const lineNum = i + 1;
 
-                            if (d.type === 'equal') {
-                                leftLineNum++;
-                                rightLineNum++;
-                                leftHtmlParts.push(`<div class="diff-line">${escapeHtml(d.left) || '&nbsp;'}</div>`);
-                                rightHtmlParts.push(`<div class="diff-line">${escapeHtml(d.right) || '&nbsp;'}</div>`);
-                                leftLineNumParts.push(leftLineNum);
-                                rightLineNumParts.push(rightLineNum);
-                            } else if (d.type === 'modified') {
-                                leftLineNum++;
-                                rightLineNum++;
-                                diffIdx = differences.length;
-                                differences.push({ leftLine: leftLineNum, rightLine: rightLineNum, type: 'modified' });
-
-                                const charDiff = diffChars(d.left, d.right);
-                                leftHtmlParts.push(`<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.left || '&nbsp;'}</div>`);
-                                rightHtmlParts.push(`<div class="diff-line modified" data-diff="${diffIdx}">${charDiff.right || '&nbsp;'}</div>`);
-                                leftLineNumParts.push(leftLineNum);
-                                rightLineNumParts.push(rightLineNum);
-                            } else if (d.type === 'removed') {
-                                leftLineNum++;
-                                diffIdx = differences.length;
-                                differences.push({ leftLine: leftLineNum, type: 'removed' });
-
-                                leftHtmlParts.push(`<div class="diff-line removed" data-diff="${diffIdx}">${escapeHtml(d.left) || '&nbsp;'}</div>`);
-                                rightHtmlParts.push(`<div class="diff-line removed" data-diff="${diffIdx}">&nbsp;</div>`);
-                                leftLineNumParts.push(leftLineNum);
-                                rightLineNumParts.push('-');
-                            } else if (d.type === 'added') {
-                                rightLineNum++;
-                                diffIdx = differences.length;
-                                differences.push({ rightLine: rightLineNum, type: 'added' });
-
-                                leftHtmlParts.push(`<div class="diff-line added" data-diff="${diffIdx}">&nbsp;</div>`);
-                                rightHtmlParts.push(`<div class="diff-line added" data-diff="${diffIdx}">${escapeHtml(d.right) || '&nbsp;'}</div>`);
+                            if (leftLine === undefined) {
+                                // Extra line only on right side
+                                const diffIdx = differences.length;
+                                differences.push({ rightLine: lineNum, type: 'added' });
+                                leftHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}">&nbsp;</div>`);
+                                rightHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}"><span class="diff-char-changed">${escapeHtml(rightLine) || '&nbsp;'}</span></div>`);
                                 leftLineNumParts.push('-');
-                                rightLineNumParts.push(rightLineNum);
+                                rightLineNumParts.push(lineNum);
+                            } else if (rightLine === undefined) {
+                                // Extra line only on left side
+                                const diffIdx = differences.length;
+                                differences.push({ leftLine: lineNum, type: 'removed' });
+                                leftHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}"><span class="diff-char-changed">${escapeHtml(leftLine) || '&nbsp;'}</span></div>`);
+                                rightHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}">&nbsp;</div>`);
+                                leftLineNumParts.push(lineNum);
+                                rightLineNumParts.push('-');
+                            } else if (normalize(leftLine) === normalize(rightLine)) {
+                                // Lines are identical (after normalization)
+                                leftHtmlParts.push(`<div class="diff-line">${escapeHtml(leftLine) || '&nbsp;'}</div>`);
+                                rightHtmlParts.push(`<div class="diff-line">${escapeHtml(rightLine) || '&nbsp;'}</div>`);
+                                leftLineNumParts.push(lineNum);
+                                rightLineNumParts.push(lineNum);
+                            } else {
+                                // Lines differ — highlight only changed characters
+                                const diffIdx = differences.length;
+                                differences.push({ leftLine: lineNum, rightLine: lineNum, type: 'modified' });
+                                const charDiff = diffChars(leftLine, rightLine);
+                                leftHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}">${charDiff.left || '&nbsp;'}</div>`);
+                                rightHtmlParts.push(`<div class="diff-line" data-diff="${diffIdx}">${charDiff.right || '&nbsp;'}</div>`);
+                                leftLineNumParts.push(lineNum);
+                                rightLineNumParts.push(lineNum);
                             }
-                        });
+                        }
 
                         // Update UI with joined arrays
                         leftDiff.innerHTML = leftHtmlParts.join('');
@@ -1511,8 +1571,8 @@
 
             // Minimap
             function updateMinimap() {
-                leftMinimap.innerHTML = '';
-                rightMinimap.innerHTML = '';
+                leftMinimap.textContent = '';
+                rightMinimap.textContent = '';
 
                 const totalLines = Math.max(
                     leftDiff.querySelectorAll('.diff-line').length,
@@ -1529,21 +1589,21 @@
                         const marker = document.createElement('div');
                         marker.className = `minimap-marker ${diff.type}`;
                         marker.style.top = `${position}%`;
-                        marker.onclick = () => {
+                        marker.addEventListener('click', () => {
                             currentDiffIndex = idx;
                             highlightCurrentDiff();
-                        };
+                        });
                         return marker;
                     };
 
                     leftMinimap.appendChild(createMarker());
-                    rightMinimap.appendChild(createMarker());
+                    rightMinimap.appendChild(createMarker());  // Each call creates a new element
                 });
             }
 
             function clearMinimap() {
-                leftMinimap.innerHTML = '';
-                rightMinimap.innerHTML = '';
+                leftMinimap.textContent = '';
+                rightMinimap.textContent = '';
             }
 
             // Help modal with focus trap
@@ -1606,6 +1666,7 @@
                     saveFile('right');
                 } else if (e.key === 'Escape') {
                     closeHelp();
+                    document.getElementById('settingsModal').style.display = 'none';
                     if (isCompareMode) exitCompareMode();
                 }
             }

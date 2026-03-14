@@ -10,7 +10,6 @@ const pkg = require('./package.json');
 const APP_VERSION = pkg.version;
 const GITHUB_REPO = 'jj-repository/TextCompare';
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
-const GITHUB_API_LATEST = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 // Settings file for app preferences
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
@@ -61,6 +60,79 @@ function versionNewer(latest, current) {
   return false;
 }
 
+// Find the right download asset for the current platform
+function findDownloadAsset(assets) {
+  if (!assets || !Array.isArray(assets)) return null;
+
+  if (process.platform === 'win32') {
+    // Portable exe (not Setup installer)
+    return assets.find(a => a.name.endsWith('.exe') && !a.name.includes('Setup') && !a.name.includes('blockmap'));
+  } else if (process.platform === 'linux') {
+    return assets.find(a => a.name.endsWith('.AppImage'));
+  }
+  return null;
+}
+
+// Download a file from URL, following redirects
+function downloadFile(url, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    let redirectCount = 0;
+    const MAX_REDIRECTS = 5;
+    const doRequest = (requestUrl) => {
+      if (redirectCount++ > MAX_REDIRECTS) {
+        reject(new Error('Too many redirects'));
+        return;
+      }
+      https.get(requestUrl, {
+        headers: { 'User-Agent': `TextCompare/${APP_VERSION}` }
+      }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          res.resume();
+          const location = res.headers.location;
+          if (!location || !location.startsWith('https://')) {
+            reject(new Error('Redirect to non-HTTPS URL blocked'));
+            return;
+          }
+          doRequest(location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`Download failed with status ${res.statusCode}`));
+          return;
+        }
+
+        const totalBytes = parseInt(res.headers['content-length'], 10) || 0;
+        let downloadedBytes = 0;
+        const fileStream = fs.createWriteStream(destPath);
+
+        res.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          if (totalBytes > 0 && onProgress) {
+            onProgress(downloadedBytes, totalBytes);
+          }
+        });
+
+        res.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close();
+          resolve(destPath);
+        });
+
+        fileStream.on('error', (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+      }).on('error', (err) => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+    };
+    doRequest(url);
+  });
+}
+
 // Handle parsed update response
 function handleUpdateResponse(release, silent) {
   const latestVersion = (release.tag_name || '').replace(/^v/, '');
@@ -78,18 +150,76 @@ function handleUpdateResponse(release, silent) {
   }
 
   if (versionNewer(latestVersion, APP_VERSION)) {
-    // Window may have been closed during async operation
     if (!mainWindow) return;
+
+    const asset = findDownloadAsset(release.assets);
+
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Available',
       message: `A new version is available!\n\nCurrent: v${APP_VERSION}\nLatest: v${latestVersion}`,
       detail: release.body || 'No release notes available.',
-      buttons: ['Download Update', 'Later'],
+      buttons: asset ? ['Download Update', 'Later'] : ['Open Releases Page', 'Later'],
       defaultId: 0
-    }).then(result => {
-      if (result.response === 0) {
+    }).then(async (result) => {
+      if (result.response !== 0) return;
+
+      if (!asset) {
         shell.openExternal(GITHUB_RELEASES_URL);
+        return;
+      }
+
+      // Download directly
+      const downloadsDir = app.getPath('downloads');
+      const destPath = path.join(downloadsDir, asset.name);
+
+      // Show progress dialog
+      if (!mainWindow) return;
+      mainWindow.webContents.send('download-progress', { percent: 0, fileName: asset.name });
+
+      try {
+        await downloadFile(asset.browser_download_url, destPath, (downloaded, total) => {
+          const percent = Math.round((downloaded / total) * 100);
+          if (mainWindow) {
+            mainWindow.setProgressBar(percent / 100);
+            mainWindow.webContents.send('download-progress', { percent, fileName: asset.name });
+          }
+        });
+
+        if (mainWindow) {
+          mainWindow.setProgressBar(-1); // Remove progress bar
+          mainWindow.webContents.send('download-progress', null); // Hide overlay
+        }
+
+        if (!mainWindow) return;
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Download Complete',
+          message: `Update downloaded successfully!`,
+          detail: `Saved to:\n${destPath}\n\nClose the app and replace the old version with the new file.`,
+          buttons: ['Open Downloads Folder', 'OK'],
+          defaultId: 0
+        }).then((res) => {
+          if (res.response === 0) {
+            shell.showItemInFolder(destPath);
+          }
+        });
+      } catch (err) {
+        if (mainWindow) {
+          mainWindow.setProgressBar(-1);
+          mainWindow.webContents.send('download-progress', null);
+          dialog.showMessageBox(mainWindow, {
+            type: 'error',
+            title: 'Download Failed',
+            message: 'Failed to download the update.',
+            detail: `${err.message}\n\nYou can download it manually from the releases page.`,
+            buttons: ['Open Releases Page', 'OK']
+          }).then((res) => {
+            if (res.response === 0) {
+              shell.openExternal(GITHUB_RELEASES_URL);
+            }
+          });
+        }
       }
     });
   } else if (!silent && mainWindow) {
@@ -117,7 +247,7 @@ function checkForUpdates(silent = false) {
     // Handle redirects (301/302)
     if (res.statusCode === 301 || res.statusCode === 302) {
       const redirectUrl = res.headers.location;
-      if (redirectUrl) {
+      if (redirectUrl && redirectUrl.startsWith('https://')) {
         res.resume(); // Consume response to free memory
         https.get(redirectUrl, { headers: options.headers }, (redirectRes) => {
           if (redirectRes.statusCode !== 200) {
@@ -135,10 +265,13 @@ function checkForUpdates(silent = false) {
           }
           let rData = '';
           let rSize = 0;
+          let rDestroyed = false;
           const MAX_SIZE = 1024 * 1024; // 1MB limit
           redirectRes.on('data', chunk => {
+            if (rDestroyed) return;
             rSize += chunk.length;
             if (rSize > MAX_SIZE) {
+              rDestroyed = true;
               redirectRes.destroy();
               return;
             }
@@ -192,10 +325,13 @@ function checkForUpdates(silent = false) {
 
     let data = '';
     let totalSize = 0;
+    let destroyed = false;
     const MAX_RESPONSE_SIZE = 1024 * 1024; // 1MB limit
     res.on('data', chunk => {
+      if (destroyed) return;
       totalSize += chunk.length;
       if (totalSize > MAX_RESPONSE_SIZE) {
+        destroyed = true;
         res.destroy();
         if (!silent && mainWindow) {
           dialog.showMessageBox(mainWindow, {
@@ -367,15 +503,15 @@ function createWindow() {
     });
   }
 
-  // Save state on window events
-  mainWindow.on('resize', saveWindowState);
-  mainWindow.on('move', saveWindowState);
+  // Save state on window events (debounced to avoid excessive disk writes)
+  let saveTimeout;
+  const debouncedSave = () => {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(saveWindowState, 500);
+  };
+  mainWindow.on('resize', debouncedSave);
+  mainWindow.on('move', debouncedSave);
   mainWindow.on('close', saveWindowState);
-
-  // IPC handlers
-  ipcMain.handle('check-for-updates', () => {
-    checkForUpdates(false);
-  });
 
   // Create application menu
   const menu = Menu.buildFromTemplate([
@@ -468,6 +604,24 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// IPC handlers (registered once, outside createWindow)
+ipcMain.handle('check-for-updates', () => {
+  checkForUpdates(false);
+});
+ipcMain.handle('get-settings', () => {
+  return { ...appSettings, version: APP_VERSION };
+});
+ipcMain.handle('set-auto-update', (_, enabled) => {
+  appSettings.autoCheckUpdates = enabled === true;
+  saveSettings(appSettings);
+});
+ipcMain.handle('open-external', (_, url) => {
+  // Only allow https URLs to prevent file:// or custom protocol abuse
+  if (typeof url === 'string' && url.startsWith('https://')) {
+    shell.openExternal(url);
+  }
+});
 
 app.whenReady().then(() => {
   // Load settings before creating window
