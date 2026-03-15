@@ -242,6 +242,18 @@ This project is open source and available under the MIT License.
 - 🐛 **Bug fix:** Fixed ipcRenderer listener memory leak
 - 🧹 **Code quality:** Debounced window state saves, dead code cleanup, optimized escapeHtml
 
+### v2.3.2 (March 2026)
+- 🔒 **Security:** Download filename sanitization prevents path traversal via malicious release assets
+- 🔒 **Security:** Download URL HTTPS validation before starting request
+- 🔒 **Security:** Single-quote XSS escaping added to index.html escapeHtml
+- ⚡ **Performance:** LCS backtracking O(n) via push+reverse (was O(n^2) unshift)
+- 🐛 **Bug fix:** Concurrent update check guard prevents overlapping downloads
+- 🐛 **Bug fix:** Update flag properly cleared on all 12+ exit paths
+- 🛡️ **Stability:** 5-minute download timeout prevents hung downloads
+- 🛡️ **Stability:** Unhandled promise rejection handler prevents silent crashes
+- 🧹 **Code quality:** Deduplicated update response reading logic (120 lines to 40)
+- 🧹 **CI:** Build workflow only triggers on tags (was building on every push)
+
 ### v2.2.2 (January 2026)
 - ✨ **Updates:** Added automatic update checking on startup (configurable)
 - ✨ **Updates:** Added "Check for Updates on Startup" toggle in Help menu
