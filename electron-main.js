@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -65,8 +66,9 @@ function findDownloadAsset(assets) {
   if (!assets || !Array.isArray(assets)) return null;
 
   if (process.platform === 'win32') {
-    // Portable exe (not Setup installer)
-    return assets.find(a => a.name.endsWith('.exe') && !a.name.includes('Setup') && !a.name.includes('blockmap'));
+    // Prefer installer for auto-update (handles replacement and restart)
+    return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Installer') && !a.name.includes('blockmap'))
+      || assets.find(a => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
   } else if (process.platform === 'linux') {
     return assets.find(a => a.name.endsWith('.AppImage'));
   }
@@ -192,18 +194,69 @@ function handleUpdateResponse(release, silent) {
         }
 
         if (!mainWindow) return;
-        dialog.showMessageBox(mainWindow, {
-          type: 'info',
-          title: 'Download Complete',
-          message: `Update downloaded successfully!`,
-          detail: `Saved to:\n${destPath}\n\nClose the app and replace the old version with the new file.`,
-          buttons: ['Open Downloads Folder', 'OK'],
-          defaultId: 0
-        }).then((res) => {
-          if (res.response === 0) {
-            shell.showItemInFolder(destPath);
-          }
-        });
+
+        // Platform-specific install & restart
+        if (process.platform === 'win32') {
+          // Windows: run the downloaded installer, then quit
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Update Ready',
+            message: 'Update downloaded successfully!',
+            detail: 'The installer will now open. Follow the prompts to update.',
+            buttons: ['Install & Restart', 'Later'],
+            defaultId: 0
+          }).then((res) => {
+            if (res.response === 0) {
+              shell.openPath(destPath);
+              setTimeout(() => app.quit(), 1000);
+            }
+          });
+        } else if (process.platform === 'linux' && process.env.APPIMAGE) {
+          // Linux AppImage: replace the running AppImage and restart
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Update Ready',
+            message: 'Update downloaded successfully!',
+            detail: 'The app will restart with the new version.',
+            buttons: ['Restart Now', 'Later'],
+            defaultId: 0
+          }).then((res) => {
+            if (res.response === 0) {
+              try {
+                const appImagePath = process.env.APPIMAGE;
+                fs.copyFileSync(destPath, appImagePath);
+                fs.chmodSync(appImagePath, 0o755);
+                fs.unlinkSync(destPath); // Clean up temp download
+                spawn(appImagePath, [], { detached: true, stdio: 'ignore' }).unref();
+                app.quit();
+              } catch (replaceErr) {
+                dialog.showMessageBox(mainWindow, {
+                  type: 'error',
+                  title: 'Update Failed',
+                  message: 'Could not replace the current version.',
+                  detail: `${replaceErr.message}\n\nThe update was saved to:\n${destPath}`,
+                  buttons: ['Open Downloads Folder', 'OK']
+                }).then((r) => {
+                  if (r.response === 0) shell.showItemInFolder(destPath);
+                });
+              }
+            }
+          });
+        } else {
+          // Fallback: show download location
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Download Complete',
+            message: 'Update downloaded successfully!',
+            detail: `Saved to:\n${destPath}\n\nReplace the current version with the downloaded file.`,
+            buttons: ['Open Downloads Folder', 'OK'],
+            defaultId: 0
+          }).then((res) => {
+            if (res.response === 0) {
+              shell.showItemInFolder(destPath);
+            }
+          });
+        }
       } catch (err) {
         if (mainWindow) {
           mainWindow.setProgressBar(-1);
