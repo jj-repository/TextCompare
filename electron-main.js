@@ -88,14 +88,22 @@ function findDownloadAsset(assets) {
 // Download a file from URL, following redirects
 function downloadFile(url, destPath, onProgress) {
   return new Promise((resolve, reject) => {
+    // Validate initial URL is HTTPS
+    if (!url || !url.startsWith('https://')) {
+      reject(new Error('Download URL must be HTTPS'));
+      return;
+    }
+
     let redirectCount = 0;
     const MAX_REDIRECTS = 5;
+    const DOWNLOAD_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
     const doRequest = (requestUrl) => {
       if (redirectCount++ > MAX_REDIRECTS) {
         reject(new Error('Too many redirects'));
         return;
       }
-      https.get(requestUrl, {
+      const req = https.get(requestUrl, {
         headers: { 'User-Agent': `TextCompare/${APP_VERSION}` }
       }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
@@ -139,6 +147,11 @@ function downloadFile(url, destPath, onProgress) {
       }).on('error', (err) => {
         fs.unlink(destPath, () => {});
         reject(err);
+      });
+      req.setTimeout(DOWNLOAD_TIMEOUT, () => {
+        req.destroy();
+        fs.unlink(destPath, () => {});
+        reject(new Error('Download timed out'));
       });
     };
     doRequest(url);
@@ -236,18 +249,22 @@ function handleUpdateResponse(release, silent) {
                 const appImagePath = process.env.APPIMAGE;
                 fs.copyFileSync(destPath, appImagePath);
                 fs.chmodSync(appImagePath, 0o755);
-                fs.unlinkSync(destPath); // Clean up temp download
+                fs.unlink(destPath, () => {}); // Clean up temp download (async, best-effort)
                 spawn(appImagePath, [], { detached: true, stdio: 'ignore' }).unref();
                 app.quit();
               } catch (replaceErr) {
+                // destPath may still exist if copyFileSync failed
+                const detail = fs.existsSync(destPath)
+                  ? `${replaceErr.message}\n\nThe update was saved to:\n${destPath}`
+                  : replaceErr.message;
                 dialog.showMessageBox(mainWindow, {
                   type: 'error',
                   title: 'Update Failed',
                   message: 'Could not replace the current version.',
-                  detail: `${replaceErr.message}\n\nThe update was saved to:\n${destPath}`,
-                  buttons: ['Open Downloads Folder', 'OK']
+                  detail,
+                  buttons: fs.existsSync(destPath) ? ['Open Downloads Folder', 'OK'] : ['OK']
                 }).then((r) => {
-                  if (r.response === 0) shell.showItemInFolder(destPath);
+                  if (r.response === 0 && fs.existsSync(destPath)) shell.showItemInFolder(destPath);
                 });
               }
             }
@@ -295,161 +312,93 @@ function handleUpdateResponse(release, silent) {
   }
 }
 
+// Show update error dialog (only in non-silent mode)
+function showUpdateError(silent, detail) {
+  if (!silent && mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Update Check Failed',
+      message: 'Failed to check for updates.',
+      detail,
+      buttons: ['OK']
+    });
+  }
+}
+
+// Read a JSON response with size limit, then call handler
+function readJsonResponse(res, silent, handler) {
+  const MAX_SIZE = 1024 * 1024; // 1MB limit
+  let data = '';
+  let totalSize = 0;
+  let destroyed = false;
+
+  res.on('data', chunk => {
+    if (destroyed) return;
+    totalSize += chunk.length;
+    if (totalSize > MAX_SIZE) {
+      destroyed = true;
+      res.destroy();
+      showUpdateError(silent, 'Response exceeded 1MB size limit.');
+      return;
+    }
+    data += chunk;
+  });
+
+  res.on('end', () => {
+    if (destroyed) return;
+    try {
+      handler(JSON.parse(data));
+    } catch (e) {
+      showUpdateError(silent, e.message);
+    }
+  });
+}
+
 // Check for updates
 function checkForUpdates(silent = false) {
-  const options = {
-    hostname: 'api.github.com',
-    path: `/repos/${GITHUB_REPO}/releases/latest`,
-    method: 'GET',
-    headers: {
-      'User-Agent': `TextCompare/${APP_VERSION}`
-    }
-  };
+  const requestHeaders = { 'User-Agent': `TextCompare/${APP_VERSION}` };
 
-  const req = https.request(options, (res) => {
+  const handleResponse = (res) => {
     // Handle redirects (301/302)
     if (res.statusCode === 301 || res.statusCode === 302) {
       const redirectUrl = res.headers.location;
-      if (redirectUrl && redirectUrl.startsWith('https://')) {
-        res.resume(); // Consume response to free memory
-        https.get(redirectUrl, { headers: options.headers }, (redirectRes) => {
-          if (redirectRes.statusCode !== 200) {
-            redirectRes.resume();
-            if (!silent && mainWindow) {
-              dialog.showMessageBox(mainWindow, {
-                type: 'error',
-                title: 'Update Check Failed',
-                message: 'Failed to check for updates.',
-                detail: `Redirect returned status ${redirectRes.statusCode}.`,
-                buttons: ['OK']
-              });
-            }
-            return;
-          }
-          let rData = '';
-          let rSize = 0;
-          let rDestroyed = false;
-          const MAX_SIZE = 1024 * 1024; // 1MB limit
-          redirectRes.on('data', chunk => {
-            if (rDestroyed) return;
-            rSize += chunk.length;
-            if (rSize > MAX_SIZE) {
-              rDestroyed = true;
-              redirectRes.destroy();
-              return;
-            }
-            rData += chunk;
-          });
-          redirectRes.on('end', () => {
-            try {
-              const release = JSON.parse(rData);
-              handleUpdateResponse(release, silent);
-            } catch (e) {
-              if (!silent && mainWindow) {
-                dialog.showMessageBox(mainWindow, {
-                  type: 'error',
-                  title: 'Update Check Failed',
-                  message: 'Failed to check for updates.',
-                  detail: e.message,
-                  buttons: ['OK']
-                });
-              }
-            }
-          });
-        }).on('error', (e) => {
-          if (!silent && mainWindow) {
-            dialog.showMessageBox(mainWindow, {
-              type: 'error',
-              title: 'Update Check Failed',
-              message: 'Failed to check for updates.',
-              detail: e.message,
-              buttons: ['OK']
-            });
-          }
-        });
-      }
-      return;
-    }
-
-    // Reject non-200 responses
-    if (res.statusCode !== 200) {
       res.resume();
-      if (!silent && mainWindow) {
-        dialog.showMessageBox(mainWindow, {
-          type: 'error',
-          title: 'Update Check Failed',
-          message: 'Failed to check for updates.',
-          detail: `Server returned status ${res.statusCode}.`,
-          buttons: ['OK']
-        });
-      }
-      return;
-    }
-
-    let data = '';
-    let totalSize = 0;
-    let destroyed = false;
-    const MAX_RESPONSE_SIZE = 1024 * 1024; // 1MB limit
-    res.on('data', chunk => {
-      if (destroyed) return;
-      totalSize += chunk.length;
-      if (totalSize > MAX_RESPONSE_SIZE) {
-        destroyed = true;
-        res.destroy();
-        if (!silent && mainWindow) {
-          dialog.showMessageBox(mainWindow, {
-            type: 'error',
-            title: 'Update Check Failed',
-            message: 'Failed to check for updates.',
-            detail: 'Response exceeded 1MB size limit.',
-            buttons: ['OK']
-          });
-        }
+      if (!redirectUrl || !redirectUrl.startsWith('https://')) {
+        showUpdateError(silent, 'Redirect to non-HTTPS URL blocked.');
         return;
       }
-      data += chunk;
-    });
-    res.on('end', () => {
-      try {
-        const release = JSON.parse(data);
-        handleUpdateResponse(release, silent);
-      } catch (e) {
-        if (!silent && mainWindow) {
-          dialog.showMessageBox(mainWindow, {
-            type: 'error',
-            title: 'Update Check Failed',
-            message: 'Failed to check for updates.',
-            detail: e.message,
-            buttons: ['OK']
-          });
+      https.get(redirectUrl, { headers: requestHeaders }, (redirectRes) => {
+        if (redirectRes.statusCode !== 200) {
+          redirectRes.resume();
+          showUpdateError(silent, `Redirect returned status ${redirectRes.statusCode}.`);
+          return;
         }
-      }
-    });
-  });
-
-  req.on('error', (e) => {
-    if (!silent && mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'error',
-        title: 'Update Check Failed',
-        message: 'Failed to check for updates.',
-        detail: e.message,
-        buttons: ['OK']
-      });
+        readJsonResponse(redirectRes, silent, (release) => handleUpdateResponse(release, silent));
+      }).on('error', (e) => showUpdateError(silent, e.message));
+      return;
     }
-  });
+
+    if (res.statusCode !== 200) {
+      res.resume();
+      showUpdateError(silent, `Server returned status ${res.statusCode}.`);
+      return;
+    }
+
+    readJsonResponse(res, silent, (release) => handleUpdateResponse(release, silent));
+  };
+
+  const req = https.request({
+    hostname: 'api.github.com',
+    path: `/repos/${GITHUB_REPO}/releases/latest`,
+    method: 'GET',
+    headers: requestHeaders
+  }, handleResponse);
+
+  req.on('error', (e) => showUpdateError(silent, e.message));
 
   req.setTimeout(10000, () => {
     req.destroy();
-    if (!silent && mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'error',
-        title: 'Update Check Failed',
-        message: 'Failed to check for updates.',
-        detail: 'Request timed out after 10 seconds.',
-        buttons: ['OK']
-      });
-    }
+    showUpdateError(silent, 'Request timed out after 10 seconds.');
   });
 
   req.end();
