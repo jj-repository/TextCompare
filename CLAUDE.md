@@ -6,17 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TextCompare** is an Electron desktop application for comparing text with side-by-side diff visualization. It features an optimized LCS (Longest Common Subsequence) algorithm, minimap navigation, and a VS Code-inspired dark theme.
 
-**Version:** 2.2.6
+**Version:** 2.3.0
 
 ## Files Structure
 
 ```
 TextCompare/
-├── electron-main.js       # Electron main process (window, menu, updates)
-├── preload.js             # Context bridge for IPC (update checking)
+├── electron-main.js       # Electron main process (window, menu, updates, download)
+├── preload.js             # Context bridge for IPC (updates, settings, downloads)
 ├── index.html             # Single-file frontend (HTML + CSS + JS)
 ├── package.json           # Dependencies and build config
 ├── icon.png               # Application icon
+├── takodachi.webp         # Mascot image used in settings modal
 └── CLAUDE.md              # This file
 ```
 
@@ -41,32 +42,37 @@ npm run build:all
 
 ## Architecture Overview
 
-### Simple Two-File Design
+### Simple Three-File Design
 
-- **electron-main.js**: Electron main process with window management, menus, and update checking
-- **preload.js**: Context bridge exposing IPC for update checking to the renderer
-- **index.html**: Complete frontend in a single file (1500+ lines of HTML/CSS/JS)
+- **electron-main.js**: Electron main process with window management, menus, update checking, and direct update downloads
+- **preload.js**: Context bridge exposing IPC for update checking, settings, download progress, and external links
+- **index.html**: Complete frontend in a single file (HTML/CSS/JS)
 
 ### Key Features
 
-- Side-by-side text comparison
+- Positional side-by-side text comparison (only changed characters highlighted)
 - Line-by-line diff highlighting
+- Click-to-edit on diff view (double-click to return to editing)
 - Minimap for navigation
-- Ignore whitespace option
-- Ignore case option
+- Ignore whitespace / ignore case options
 - File drag-and-drop
+- Undo button for mouse-only users
+- Clear All confirmation popup
 - Window state persistence
+- Settings modal (auto-update toggle, readme link, version info)
 
 ## Update System
 
-**Status:** Fully implemented with settings persistence
+**Status:** Fully implemented with direct download and progress tracking
 
 **Location:** `electron-main.js`
 
 **Components:**
 - `checkForUpdates(silent)`: Fetches latest release from GitHub API
 - `versionNewer(latest, current)`: Semantic version comparison
-- Dialog with "Download Update" (opens releases page) and "Later"
+- `findDownloadAsset(assets)`: Finds platform-specific binary (portable .exe for Windows, .AppImage for Linux)
+- `downloadFile(url, destPath, onProgress)`: HTTPS download with redirect following, progress callback
+- `handleUpdateResponse(release, silent)`: Dialog with "Download Update" button for direct download, or "Open Releases Page" fallback
 - `loadSettings()` / `saveSettings()`: Persistent settings storage
 
 **GitHub Integration:**
@@ -74,11 +80,27 @@ npm run build:all
 - API: `https://api.github.com/repos/jj-repository/TextCompare/releases/latest`
 
 **Features:**
-- Auto-check on startup (configurable via Help menu)
+- Auto-check on startup (configurable via Help menu or settings modal)
+- Direct download with progress bar (taskbar + in-app overlay via IPC)
+- HTTPS validation on all redirects (blocks non-HTTPS redirects)
+- 1MB response size limit on API calls
 - Settings persisted in `userData/settings.json`
 - Silent mode for startup checks (no popup if up-to-date)
-- Manual check via Help menu
+- Manual check via Help menu or toolbar Updates button
 - 10-second request timeout
+- Fallback to opening releases page if asset not found
+
+## IPC Handlers
+
+Registered in `electron-main.js`, exposed via `preload.js`:
+
+| Channel | Direction | Purpose |
+|---------|-----------|---------|
+| `check-for-updates` | renderer → main | Trigger manual update check |
+| `get-settings` | renderer → main | Get app settings + version |
+| `set-auto-update` | renderer → main | Toggle auto-update preference |
+| `open-external` | renderer → main | Open HTTPS URL in browser (whitelist validated) |
+| `download-progress` | main → renderer | Send download progress (percent, fileName) |
 
 ## Dependencies
 
@@ -97,21 +119,11 @@ Minimal dependencies - uses only Electron with no additional runtime dependencie
 
 **File:** `userData/window-state.json`
 
-**Stored State:**
-```javascript
-{
-  width: 1400,
-  height: 900,
-  x: undefined,
-  y: undefined,
-  isMaximized: false
-}
-```
-
 **Features:**
 - Validates window position against display bounds
 - Resets off-screen windows to default position
 - Only saves bounds if not maximized
+- Debounced saves (500ms) to avoid excessive disk writes
 
 ## Security Configuration
 
@@ -125,16 +137,22 @@ webPreferences: {
 
 **Production Security:**
 - DevTools disabled in production builds
-- Keyboard shortcuts (F12, Ctrl+Shift+I) blocked
+- Keyboard shortcuts (F12, Ctrl+Shift+I) blocked in packaged builds
+- HTTPS validation on all redirects (update checker & downloader)
+- URL whitelist on `open-external` IPC (only `https://` allowed)
+- 1MB response size limit on update API calls
+- ipcRenderer listener cleanup prevents memory leaks
+- No external network calls except update check and download
 
 ## Menu Structure
 
-- **File**: Load File 1, Load File 2, Compare, Exit
-- **Edit**: Standard edit operations
-- **View**: Reload, Toggle Fullscreen, Zoom
-- **Window**: Minimize, Zoom, Close
-- **Help**: Check for Updates, About
-- **Toolbar**: Includes an "Updates" button for in-app update checking via IPC
+- **File**: Quit
+- **Edit**: Undo, Redo, Cut, Copy, Paste, Select All
+- **View**: Reload, Force Reload, DevTools (dev only), Zoom, Fullscreen
+- **Window**: Minimize, Close
+- **Help**: Check for Updates, Auto-Update Toggle, View on GitHub, About
+
+**Toolbar:** Includes an "Updates" button for in-app update checking via IPC, plus a settings gear icon.
 
 ## Build Configuration
 
@@ -143,37 +161,22 @@ webPreferences: {
   "build": {
     "appId": "com.textcompare.app",
     "productName": "TextCompare",
-    "linux": { "target": ["AppImage", "deb"] },
-    "win": { "target": ["nsis", "portable"] }
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "artifactName": "TextCompare${version}Linux.${ext}"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "artifactName": "TextCompareInstaller${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "TextCompare${version}Portable.${ext}"
+    }
   }
 }
 ```
-
-## Known Issues / Technical Debt
-
-1. **No direct download**: Update opens releases page instead of downloading directly
-2. **Single-file frontend**: 1500+ lines in index.html could be modularized
-3. **Limited IPC**: IPC used for update checking; file operations still handled directly in renderer
-
-## Recent Fixes (January 2026)
-
-- Removed unused `div` variable in escapeHtml() function (diff-utils.js)
-- Implemented drag-and-drop file support with visual feedback (was documented but not implemented)
-- Added .drag-over CSS styling for drag-drop visual feedback
-- Fixed null reference error when window closes during update check (added mainWindow checks)
-
-## Common Development Tasks
-
-### Adding IPC communication
-1. Add handlers in `electron-main.js` with `ipcMain.handle()`
-2. Expose in `preload.js` via `contextBridge.exposeInMainWorld()`
-3. Call from renderer via `window.electron.methodName()`
-
-### Adding direct download for updates
-1. Parse release assets from GitHub API response
-2. Download appropriate binary for platform
-3. Save to temp directory with progress tracking
-4. Show notification when complete
 
 ## Platform Notes
 
@@ -189,61 +192,49 @@ webPreferences: {
 
 ## Review Status
 
-> **Last Full Review:** 2026-01-10
-> **Status:** ✅ Production Ready
+> **Last Full Review:** 2026-03-15
+> **Status:** Production Ready
 
-### Security Review ✅
+### Security Review
 - [x] Context isolation enabled
 - [x] Sandbox mode enabled
 - [x] No nodeIntegration
 - [x] DevTools disabled in production
 - [x] Keyboard shortcuts blocked (F12, Ctrl+Shift+I)
-- [x] No external network calls except update check
+- [x] HTTPS validation on redirects (update checker + downloader)
+- [x] URL whitelist on open-external IPC
+- [x] 1MB response size limit on API responses
+- [x] ipcRenderer listener cleanup (no memory leaks)
 - [x] Update check has timeout (10s)
 
-### Code Quality ✅
+### Code Quality
 - [x] All tests passing (26 tests)
 - [x] No unused variables
 - [x] Drag-and-drop implemented
 - [x] Window state persistence working
-
-## Quality Standards
-
-**Target:** Text diff tool - fast, accurate, simple to use
-
-| Aspect | Standard | Status |
-|--------|----------|--------|
-| Security | Electron best practices followed | ✅ Met |
-| Accuracy | Diff algorithm correct | ✅ Met |
-| Performance | Handles large files | ✅ Met |
-| UX | Intuitive side-by-side view | ✅ Met |
-| Documentation | CLAUDE.md current | ✅ Met |
+- [x] Debounced window state saves
 
 ## Intentional Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
 | Single index.html file | Simple distribution; no build step for frontend |
-| IPC only for updates | Files loaded directly in renderer; IPC used for update checking |
-| Update opens releases page | Avoids binary download/verification complexity |
+| Direct update download | Downloads portable exe/AppImage directly with progress bar |
 | Minimal dependencies | Only Electron; no runtime dependencies |
 | VS Code-like theme | Familiar to developers; good contrast for diffs |
-
-## Won't Fix (Accepted Limitations)
-
-| Issue | Reason |
-|-------|--------|
-| No direct update download | Opens releases page; keeps app simple |
-| Single-file frontend (1500+ lines) | Works fine; splitting would add build complexity |
-| No IPC for file operations | File operations work fine in renderer for this use case |
-| No syntax highlighting | Scope creep; this is a diff tool, not an editor |
+| Positional diff (v2.3.0) | Text stays in place; only changed chars highlighted in red |
 
 ## Completed Optimizations
 
-- ✅ Drag-and-drop file loading
-- ✅ Visual feedback for drag operations
-- ✅ Unused variable cleanup
-- ✅ Window state persistence
-- ✅ LCS algorithm optimized
-
-**DO NOT further optimize:** The diff algorithm is already optimized. For very large files (10MB+), performance is acceptable. Further optimization would require fundamentally different approach (streaming, workers).
+- Drag-and-drop file loading
+- Visual feedback for drag operations
+- Unused variable cleanup
+- Window state persistence
+- LCS algorithm optimized
+- Direct update downloads with progress
+- HTTPS redirect validation
+- ipcRenderer listener memory leak fix
+- Debounced window state saves
+- Settings modal with auto-update toggle
+- Click-to-edit on diff view
+- Undo button and Clear All confirmation

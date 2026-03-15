@@ -42,33 +42,27 @@ A modern, web-based text diff tool with a VS Code-inspired interface for compari
 
 ### Updates (Desktop App)
 - **Automatic update checking** on startup (configurable)
-- **Manual update check** via Help menu
+- **Manual update check** via Help menu or toolbar button
+- **Direct download** with progress bar (taskbar + in-app overlay)
 - **Version comparison** with release notes display
-- **One-click update** opens GitHub releases page
+- **Settings modal** with auto-update toggle, version info, and readme link
 
-## Recent Improvements (v2.2.1)
+## Recent Improvements (v2.3.0)
 
-### Performance Optimizations
-- ✅ **Optimized LCS algorithm** - Uses Uint8Array for large files, reducing memory usage
-- ✅ **Debounced scroll sync** - Smoother scrolling at ~60fps
-- ✅ **Efficient HTML building** - Array join instead of string concatenation
-- ✅ **CSS transition optimization** - Specific properties instead of 'all'
-
-### Accessibility & UX
-- ✅ **Focus trap for modal** - Keyboard navigation stays within modal
-- ✅ **Focus-visible styles** - Clear keyboard navigation indicators
-- ✅ **Window state persistence** - Remembers position, size, and maximized state
+### New Features
+- ✅ **Positional comparison** - Text stays in place; only changed characters highlighted in red
+- ✅ **Click to edit** - Double-click on diff view to return to editing
+- ✅ **Direct update downloads** - Updates download directly with progress bar instead of opening browser
+- ✅ **Settings modal** - Auto-update toggle, readme link, version info
+- ✅ **Undo button** - For mouse-only users
+- ✅ **Clear All confirmation** - Popup to prevent accidental data loss
 
 ### Security & Stability
-- ✅ **Content Security Policy** - Added CSP meta tag
-- ✅ **Screen bounds validation** - Prevents window opening off-screen
-- ✅ **Improved error handling** - Better Electron error dialogs
-
-### Code Quality
-- ✅ **DOM query caching** - 11 new cached element references
-- ✅ **Named constants** - Extracted magic numbers
-- ✅ **Consistent indentation** - Cleaned up code formatting
-- ✅ **Fixed minimap bug** - Correct onclick handlers for both minimaps
+- ✅ **HTTPS redirect validation** - Blocks non-HTTPS redirects in update checker and downloader
+- ✅ **URL whitelist** - External link IPC only allows `https://` URLs
+- ✅ **Memory leak fix** - ipcRenderer listener cleanup prevents accumulation
+- ✅ **Debounced window state saves** - Reduces disk I/O
+- ✅ **1MB response limit** - Prevents DoS via oversized API responses
 
 ## Browser Compatibility
 
@@ -179,9 +173,11 @@ TextCompare supports all text-based file formats, including:
 ```
 TextCompare/
 ├── index.html                  # Complete web application (HTML + CSS + JS)
-├── electron-main.js            # Electron main process
+├── electron-main.js            # Electron main process (window, menu, updates, download)
+├── preload.js                  # Context bridge for IPC
 ├── package.json                # Node.js dependencies and build config
 ├── icon.png                    # Application icon (512x512 PNG)
+├── takodachi.webp              # Mascot image for settings modal
 ├── .github/
 │   └── workflows/
 │       ├── deploy.yml          # GitHub Pages deployment
@@ -234,7 +230,19 @@ This project is open source and available under the MIT License.
 
 ## Changelog
 
-### v2.2.2 (Latest - January 2026)
+### v2.3.0 (Latest - March 2026)
+- ✨ **Positional comparison:** Text stays in place after compare — only different characters highlighted in red
+- ✨ **Click to edit:** Double-click on diff view to go back to editing
+- ✨ **Direct update download:** Updates download directly with progress bar instead of opening browser
+- ✨ **Settings modal:** Auto-update toggle, readme link, version info
+- ✨ **Undo button:** For mouse-only users
+- ✨ **Clear All confirmation:** Popup to prevent accidental data loss
+- 🔒 **Security:** HTTPS validation on all redirects (update checker & downloader)
+- 🔒 **Security:** URL whitelist on external link IPC
+- 🐛 **Bug fix:** Fixed ipcRenderer listener memory leak
+- 🧹 **Code quality:** Debounced window state saves, dead code cleanup, optimized escapeHtml
+
+### v2.2.2 (January 2026)
 - ✨ **Updates:** Added automatic update checking on startup (configurable)
 - ✨ **Updates:** Added "Check for Updates on Startup" toggle in Help menu
 - ✨ **Settings:** Added settings persistence to user data directory
