@@ -61,14 +61,24 @@ function versionNewer(latest, current) {
   return false;
 }
 
+// Detect if running as portable (electron-builder portable extracts to temp dir)
+function isPortable() {
+  if (process.platform !== 'win32') return false;
+  const tempDir = (process.env.TEMP || process.env.TMP || '').toLowerCase();
+  return tempDir && process.execPath.toLowerCase().startsWith(tempDir);
+}
+
 // Find the right download asset for the current platform
 function findDownloadAsset(assets) {
   if (!assets || !Array.isArray(assets)) return null;
 
   if (process.platform === 'win32') {
-    // Prefer installer for auto-update (handles replacement and restart)
-    return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Installer') && !a.name.includes('blockmap'))
-      || assets.find(a => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
+    if (isPortable()) {
+      // Portable: download portable exe
+      return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Portable') && !a.name.includes('blockmap'));
+    }
+    // Installed: download installer for auto-update
+    return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Installer') && !a.name.includes('blockmap'));
   } else if (process.platform === 'linux') {
     return assets.find(a => a.name.endsWith('.AppImage'));
   }
@@ -196,8 +206,8 @@ function handleUpdateResponse(release, silent) {
         if (!mainWindow) return;
 
         // Platform-specific install & restart
-        if (process.platform === 'win32') {
-          // Windows: run the downloaded installer, then quit
+        if (process.platform === 'win32' && !isPortable()) {
+          // Windows installed: run the downloaded installer, then quit
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Update Ready',
@@ -243,13 +253,13 @@ function handleUpdateResponse(release, silent) {
             }
           });
         } else {
-          // Fallback: show download location
+          // Fallback (Windows portable, .deb installs, etc.): show download location
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Download Complete',
             message: 'Update downloaded successfully!',
-            detail: `Saved to:\n${destPath}\n\nReplace the current version with the downloaded file.`,
-            buttons: ['Open Downloads Folder', 'OK'],
+            detail: `Saved to:\n${destPath}`,
+            buttons: ['Open in Folder', 'OK'],
             defaultId: 0
           }).then((res) => {
             if (res.response === 0) {
