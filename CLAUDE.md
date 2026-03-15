@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TextCompare** is an Electron desktop application for comparing text with side-by-side diff visualization. It features an optimized LCS (Longest Common Subsequence) algorithm, minimap navigation, and a VS Code-inspired dark theme.
 
-**Version:** 2.3.0
+**Version:** 2.3.1
 
 ## Files Structure
 
@@ -230,11 +230,14 @@ webPreferences: {
 - Visual feedback for drag operations
 - Unused variable cleanup
 - Window state persistence
-- LCS algorithm optimized
-- Direct update downloads with progress
+- LCS algorithm optimized (push+reverse instead of O(n^2) unshift)
+- Direct update downloads with progress + 5-min timeout
 - HTTPS redirect validation
 - ipcRenderer listener memory leak fix
 - Debounced window state saves
 - Settings modal with auto-update toggle
 - Click-to-edit on diff view
 - Undo button and Clear All confirmation
+- Download filename sanitization (path traversal prevention)
+- Concurrent update check guard
+- Unhandled rejection handler

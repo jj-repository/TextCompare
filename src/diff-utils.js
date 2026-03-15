@@ -118,7 +118,7 @@ function backtrackLCS(lcsResult, a, b) {
                 break;
             }
             if (a[i - 1] === b[j - 1]) {
-                result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
+                result.push({ type: 'equal', left: i - 1, right: j - 1 });
                 i--; j--;
             } else if (dp[i - 1][j] > dp[i][j - 1]) {
                 i--;
@@ -141,7 +141,7 @@ function backtrackLCS(lcsResult, a, b) {
             }
             const decision = decisions[i - 1][j - 1];
             if (decision === 2) { // diagonal match
-                result.unshift({ type: 'equal', left: i - 1, right: j - 1 });
+                result.push({ type: 'equal', left: i - 1, right: j - 1 });
                 i--; j--;
             } else if (decision === 1) { // top
                 i--;
@@ -151,6 +151,7 @@ function backtrackLCS(lcsResult, a, b) {
         }
     }
 
+    result.reverse();
     return result;
 }
 

@@ -45,6 +45,7 @@ function saveSettings(settings) {
 }
 
 let appSettings = defaultSettings;
+let isUpdateInProgress = false;
 
 // Compare version strings
 function versionNewer(latest, current) {
@@ -163,6 +164,7 @@ function handleUpdateResponse(release, silent) {
   const latestVersion = (release.tag_name || '').replace(/^v/, '');
 
   if (!latestVersion) {
+    isUpdateInProgress = false;
     if (!silent && mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: 'info',
@@ -187,16 +189,30 @@ function handleUpdateResponse(release, silent) {
       buttons: asset ? ['Download Update', 'Later'] : ['Open Releases Page', 'Later'],
       defaultId: 0
     }).then(async (result) => {
-      if (result.response !== 0) return;
+      if (result.response !== 0) {
+        isUpdateInProgress = false;
+        return;
+      }
 
       if (!asset) {
+        isUpdateInProgress = false;
         shell.openExternal(GITHUB_RELEASES_URL);
         return;
       }
 
-      // Download directly
+      // Download directly — sanitize filename to prevent path traversal
       const downloadsDir = app.getPath('downloads');
-      const destPath = path.join(downloadsDir, asset.name);
+      const safeName = path.basename(asset.name).replace(/[<>:"|?*\x00-\x1f]/g, '_');
+      if (!safeName || safeName === '.' || safeName === '..') {
+        shell.openExternal(GITHUB_RELEASES_URL);
+        return;
+      }
+      const destPath = path.join(downloadsDir, safeName);
+      // Final check: resolved path must be inside downloads dir
+      if (!path.resolve(destPath).startsWith(path.resolve(downloadsDir))) {
+        shell.openExternal(GITHUB_RELEASES_URL);
+        return;
+      }
 
       // Show progress dialog
       if (!mainWindow) return;
@@ -285,6 +301,7 @@ function handleUpdateResponse(release, silent) {
           });
         }
       } catch (err) {
+        isUpdateInProgress = false;
         if (mainWindow) {
           mainWindow.setProgressBar(-1);
           mainWindow.webContents.send('download-progress', null);
@@ -302,13 +319,16 @@ function handleUpdateResponse(release, silent) {
         }
       }
     });
-  } else if (!silent && mainWindow) {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'No Updates',
-      message: `You are running the latest version (v${APP_VERSION}).`,
-      buttons: ['OK']
-    });
+  } else {
+    isUpdateInProgress = false;
+    if (!silent && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Updates',
+        message: `You are running the latest version (v${APP_VERSION}).`,
+        buttons: ['OK']
+      });
+    }
   }
 }
 
@@ -356,6 +376,16 @@ function readJsonResponse(res, silent, handler) {
 
 // Check for updates
 function checkForUpdates(silent = false) {
+  if (isUpdateInProgress) {
+    if (!silent && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info', title: 'Update', message: 'An update check is already in progress.', buttons: ['OK']
+      });
+    }
+    return;
+  }
+  isUpdateInProgress = true;
+
   const requestHeaders = { 'User-Agent': `TextCompare/${APP_VERSION}` };
 
   const handleResponse = (res) => {
@@ -394,10 +424,14 @@ function checkForUpdates(silent = false) {
     headers: requestHeaders
   }, handleResponse);
 
-  req.on('error', (e) => showUpdateError(silent, e.message));
+  req.on('error', (e) => {
+    isUpdateInProgress = false;
+    showUpdateError(silent, e.message);
+  });
 
   req.setTimeout(10000, () => {
     req.destroy();
+    isUpdateInProgress = false;
     showUpdateError(silent, 'Request timed out after 10 seconds.');
   });
 
@@ -633,6 +667,11 @@ ipcMain.handle('open-external', (_, url) => {
   if (typeof url === 'string' && url.startsWith('https://')) {
     shell.openExternal(url);
   }
+});
+
+// Prevent unhandled rejections from crashing the process
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
 });
 
 app.whenReady().then(() => {
