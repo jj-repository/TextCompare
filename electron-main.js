@@ -177,7 +177,10 @@ function handleUpdateResponse(release, silent) {
   }
 
   if (versionNewer(latestVersion, APP_VERSION)) {
-    if (!mainWindow) return;
+    if (!mainWindow) {
+      isUpdateInProgress = false;
+      return;
+    }
 
     const asset = findDownloadAsset(release.assets);
 
@@ -204,18 +207,23 @@ function handleUpdateResponse(release, silent) {
       const downloadsDir = app.getPath('downloads');
       const safeName = path.basename(asset.name).replace(/[<>:"|?*\x00-\x1f]/g, '_');
       if (!safeName || safeName === '.' || safeName === '..') {
+        isUpdateInProgress = false;
         shell.openExternal(GITHUB_RELEASES_URL);
         return;
       }
       const destPath = path.join(downloadsDir, safeName);
       // Final check: resolved path must be inside downloads dir
       if (!path.resolve(destPath).startsWith(path.resolve(downloadsDir))) {
+        isUpdateInProgress = false;
         shell.openExternal(GITHUB_RELEASES_URL);
         return;
       }
 
       // Show progress dialog
-      if (!mainWindow) return;
+      if (!mainWindow) {
+        isUpdateInProgress = false;
+        return;
+      }
       mainWindow.webContents.send('download-progress', { percent: 0, fileName: asset.name });
 
       try {
@@ -232,7 +240,10 @@ function handleUpdateResponse(release, silent) {
           mainWindow.webContents.send('download-progress', null); // Hide overlay
         }
 
-        if (!mainWindow) return;
+        if (!mainWindow) {
+          isUpdateInProgress = false;
+          return;
+        }
 
         // Platform-specific install & restart
         if (process.platform === 'win32' && !isPortable()) {
@@ -248,6 +259,8 @@ function handleUpdateResponse(release, silent) {
             if (res.response === 0) {
               shell.openPath(destPath);
               setTimeout(() => app.quit(), 1000);
+            } else {
+              isUpdateInProgress = false;
             }
           });
         } else if (process.platform === 'linux' && process.env.APPIMAGE) {
@@ -269,6 +282,7 @@ function handleUpdateResponse(release, silent) {
                 spawn(appImagePath, [], { detached: true, stdio: 'ignore' }).unref();
                 app.quit();
               } catch (replaceErr) {
+                isUpdateInProgress = false;
                 // destPath may still exist if copyFileSync failed
                 const detail = fs.existsSync(destPath)
                   ? `${replaceErr.message}\n\nThe update was saved to:\n${destPath}`
@@ -283,10 +297,13 @@ function handleUpdateResponse(release, silent) {
                   if (r.response === 0 && fs.existsSync(destPath)) shell.showItemInFolder(destPath);
                 });
               }
+            } else {
+              isUpdateInProgress = false;
             }
           });
         } else {
           // Fallback (Windows portable, .deb installs, etc.): show download location
+          isUpdateInProgress = false;
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Download Complete',
@@ -334,6 +351,7 @@ function handleUpdateResponse(release, silent) {
 
 // Show update error dialog (only in non-silent mode)
 function showUpdateError(silent, detail) {
+  isUpdateInProgress = false;
   if (!silent && mainWindow) {
     dialog.showMessageBox(mainWindow, {
       type: 'error',
