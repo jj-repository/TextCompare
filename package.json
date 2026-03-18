@@ -38,8 +38,8 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "electron": "^39.2.7",
-    "electron-builder": "^26.0.12"
+    "electron": "^41.0.3",
+    "electron-builder": "^26.8.1"
   },
   "build": {
     "appId": "com.textcompare.app",
