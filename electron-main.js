@@ -62,24 +62,12 @@ function versionNewer(latest, current) {
   return false;
 }
 
-// Detect if running as portable (electron-builder portable extracts to temp dir)
-function isPortable() {
-  if (process.platform !== 'win32') return false;
-  const tempDir = (process.env.TEMP || process.env.TMP || '').toLowerCase();
-  return tempDir && process.execPath.toLowerCase().startsWith(tempDir);
-}
-
 // Find the right download asset for the current platform
 function findDownloadAsset(assets) {
   if (!assets || !Array.isArray(assets)) return null;
 
   if (process.platform === 'win32') {
-    if (isPortable()) {
-      // Portable: download portable exe
-      return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Portable') && !a.name.includes('blockmap'));
-    }
-    // Installed: download installer for auto-update
-    return assets.find(a => a.name.endsWith('.exe') && a.name.includes('Installer') && !a.name.includes('blockmap'));
+    return assets.find(a => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
   } else if (process.platform === 'linux') {
     return assets.find(a => a.name.endsWith('.AppImage'));
   }
@@ -245,25 +233,8 @@ function handleUpdateResponse(release, silent) {
           return;
         }
 
-        // Platform-specific install & restart
-        if (process.platform === 'win32' && !isPortable()) {
-          // Windows installed: run the downloaded installer, then quit
-          dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Update Ready',
-            message: 'Update downloaded successfully!',
-            detail: 'The installer will now open. Follow the prompts to update.',
-            buttons: ['Install & Restart', 'Later'],
-            defaultId: 0
-          }).then((res) => {
-            if (res.response === 0) {
-              shell.openPath(destPath);
-              setTimeout(() => app.quit(), 1000);
-            } else {
-              isUpdateInProgress = false;
-            }
-          });
-        } else if (process.platform === 'linux' && process.env.APPIMAGE) {
+        // Platform-specific post-download behavior
+        if (process.platform === 'linux' && process.env.APPIMAGE) {
           // Linux AppImage: replace the running AppImage and restart
           dialog.showMessageBox(mainWindow, {
             type: 'info',
@@ -302,19 +273,19 @@ function handleUpdateResponse(release, silent) {
             }
           });
         } else {
-          // Fallback (Windows portable, .deb installs, etc.): show download location
-          isUpdateInProgress = false;
+          // Windows portable (and any other platform): open folder then quit
           dialog.showMessageBox(mainWindow, {
             type: 'info',
-            title: 'Download Complete',
+            title: 'Update Ready',
             message: 'Update downloaded successfully!',
-            detail: `Saved to:\n${destPath}`,
-            buttons: ['Open in Folder', 'OK'],
+            detail: `Saved to:\n${destPath}\n\nPlease close this app and run the new version.`,
+            buttons: ['Open in Folder', 'Close'],
             defaultId: 0
           }).then((res) => {
             if (res.response === 0) {
               shell.showItemInFolder(destPath);
             }
+            setTimeout(() => app.quit(), 500);
           });
         }
       } catch (err) {
@@ -580,12 +551,6 @@ function createWindow() {
   // Create application menu
   const menu = Menu.buildFromTemplate([
     {
-      label: 'File',
-      submenu: [
-        { role: 'quit' }
-      ]
-    },
-    {
       label: 'Edit',
       submenu: [
         { role: 'undo' },
@@ -610,13 +575,6 @@ function createWindow() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'close' }
       ]
     },
     {

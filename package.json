@@ -1,6 +1,6 @@
 {
   "name": "textcompare",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
   "repository": {
@@ -52,25 +52,20 @@
     ],
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ],
       "category": "Development",
       "icon": "icon.png",
-      "artifactName": "TextCompare${version}Linux.${ext}"
+      "artifactName": "TextCompare-Linux.${ext}"
     },
     "win": {
       "target": [
-        "nsis",
         "portable"
       ],
       "icon": "icon.png"
     },
-    "nsis": {
-      "artifactName": "TextCompareInstaller${version}.${ext}"
-    },
     "portable": {
-      "artifactName": "TextCompare${version}Portable.${ext}"
+      "artifactName": "TextCompare-Windows.${ext}"
     },
     "directories": {
       "output": "dist"

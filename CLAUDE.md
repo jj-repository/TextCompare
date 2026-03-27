@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TextCompare** is an Electron desktop application for comparing text with side-by-side diff visualization. It features an optimized LCS (Longest Common Subsequence) algorithm, minimap navigation, and a VS Code-inspired dark theme.
 
-**Version:** 2.3.2
+**Version:** 2.3.3
+
+## Versioning
+
+Version bumps default to **+0.0.1** (patch) unless explicitly told otherwise.
 
 ## Files Structure
 
@@ -146,10 +150,8 @@ webPreferences: {
 
 ## Menu Structure
 
-- **File**: Quit
 - **Edit**: Undo, Redo, Cut, Copy, Paste, Select All
 - **View**: Reload, Force Reload, DevTools (dev only), Zoom, Fullscreen
-- **Window**: Minimize, Close
 - **Help**: Check for Updates, Auto-Update Toggle, View on GitHub, About
 
 **Toolbar:** Includes an "Updates" button for in-app update checking via IPC, plus a settings gear icon.
@@ -162,17 +164,12 @@ webPreferences: {
     "appId": "com.textcompare.app",
     "productName": "TextCompare",
     "linux": {
-      "target": ["AppImage", "deb"],
-      "artifactName": "TextCompare${version}Linux.${ext}"
+      "target": ["AppImage"],
+      "artifactName": "TextCompare-Linux.${ext}"
     },
     "win": {
-      "target": ["nsis", "portable"]
-    },
-    "nsis": {
-      "artifactName": "TextCompareInstaller${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "TextCompare${version}Portable.${ext}"
+      "target": ["portable"],
+      "artifactName": "TextCompare-Windows.${ext}"
     }
   }
 }
@@ -181,11 +178,11 @@ webPreferences: {
 ## Platform Notes
 
 ### Linux
-- Builds AppImage and .deb
+- Builds AppImage only (`TextCompare-Linux.AppImage`)
 - Icon at `icon.png`
 
 ### Windows
-- Builds NSIS installer and portable
+- Builds portable exe only (`TextCompare-Windows.exe`)
 - Same icon file
 
 ---

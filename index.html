@@ -613,7 +613,7 @@
                 <span>Settings</span>
             </button>
             <button class="btn btn-help" id="btnHelp" title="Help">
-                <span>HELP</span>
+                <span>Help</span>
             </button>
         </div>
     </div>
@@ -727,6 +727,9 @@
             <p>- Recommended file size limit: 10MB</p>
             <p>- Files are processed locally (nothing uploaded)</p>
             <p style="margin-top: 15px;"><a href="#" id="helpGithubLink" style="color: #569cd6;">View on GitHub / Install Instructions</a></p>
+            <div style="margin-top: 12px;">
+                <button class="btn btn-secondary" id="btnHelpReportBug">Report Bug</button>
+            </div>
             <div class="modal-actions">
                 <button class="btn btn-primary" id="btnCloseHelp">Got it!</button>
             </div>
@@ -745,6 +748,7 @@
                 <div style="display: flex; gap: 10px;">
                     <button class="btn btn-secondary" id="btnSettingsCheckUpdates">Check for Updates</button>
                     <button class="btn btn-secondary" id="btnSettingsReadme">Readme</button>
+                    <button class="btn btn-secondary" id="btnSettingsReportBug">Report Bug</button>
                 </div>
             </div>
             <div style="margin-top: 20px; text-align: center;">
@@ -921,6 +925,13 @@
                         window.open('https://github.com/jj-repository/TextCompare#readme', '_blank');
                     }
                 });
+                document.getElementById('btnHelpReportBug').addEventListener('click', () => {
+                    if (window.electron && window.electron.openExternal) {
+                        window.electron.openExternal('https://github.com/jj-repository/TextCompare/issues/new?template=bug_report.yml');
+                    } else {
+                        window.open('https://github.com/jj-repository/TextCompare/issues/new?template=bug_report.yml', '_blank');
+                    }
+                });
 
                 // Settings modal
                 const settingsModal = document.getElementById('settingsModal');
@@ -943,6 +954,13 @@
                         window.electron.openExternal('https://github.com/jj-repository/TextCompare#readme');
                     } else {
                         window.open('https://github.com/jj-repository/TextCompare#readme', '_blank');
+                    }
+                });
+                document.getElementById('btnSettingsReportBug').addEventListener('click', () => {
+                    if (window.electron && window.electron.openExternal) {
+                        window.electron.openExternal('https://github.com/jj-repository/TextCompare/issues/new?template=bug_report.yml');
+                    } else {
+                        window.open('https://github.com/jj-repository/TextCompare/issues/new?template=bug_report.yml', '_blank');
                     }
                 });
                 // Auto-update checkbox synced with electron settings
