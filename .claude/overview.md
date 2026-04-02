@@ -1,6 +1,6 @@
 # Overview
 
-v2.3.3 — Electron app for side-by-side text comparison. LCS diff, minimap navigation, VS Code dark theme.
+v2.04 — Electron app for side-by-side text comparison. LCS diff, minimap navigation, VS Code dark theme.
 
 ## Files
 - `electron-main.js` — main process (window, menu, updates, download)

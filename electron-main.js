@@ -9,6 +9,8 @@ let mainWindow;
 // Version and Update Constants
 const pkg = require('./package.json');
 const APP_VERSION = pkg.version;
+// Display version uses X.YY format (tag: v2.04, semver: 2.4.0)
+const DISPLAY_VERSION = APP_VERSION.replace(/^(\d+)\.(\d+)\.\d+$/, (_, maj, min) => `${maj}.${min.padStart(2, '0')}`);
 const GITHUB_REPO = 'jj-repository/TextCompare';
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 
@@ -175,7 +177,7 @@ function handleUpdateResponse(release, silent) {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Available',
-      message: `A new version is available!\n\nCurrent: v${APP_VERSION}\nLatest: v${latestVersion}`,
+      message: `A new version is available!\n\nCurrent: v${DISPLAY_VERSION}\nLatest: ${release.tag_name}`,
       detail: release.body || 'No release notes available.',
       buttons: asset ? ['Download Update', 'Later'] : ['Open Releases Page', 'Later'],
       defaultId: 0
@@ -313,7 +315,7 @@ function handleUpdateResponse(release, silent) {
       dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: 'No Updates',
-        message: `You are running the latest version (v${APP_VERSION}).`,
+        message: `You are running the latest version (v${DISPLAY_VERSION}).`,
         buttons: ['OK']
       });
     }
@@ -610,7 +612,7 @@ function createWindow() {
             dialog.showMessageBox(win, {
               type: 'info',
               title: 'About TextCompare',
-              message: `TextCompare v${APP_VERSION}`,
+              message: `TextCompare v${DISPLAY_VERSION}`,
               detail: 'A modern text diff tool with side-by-side comparison.\n\nBuilt with Electron.',
               buttons: ['OK']
             });
@@ -632,7 +634,7 @@ ipcMain.handle('check-for-updates', () => {
   checkForUpdates(false);
 });
 ipcMain.handle('get-settings', () => {
-  return { ...appSettings, version: APP_VERSION };
+  return { ...appSettings, version: DISPLAY_VERSION };
 });
 ipcMain.handle('set-auto-update', (_, enabled) => {
   appSettings.autoCheckUpdates = enabled === true;
