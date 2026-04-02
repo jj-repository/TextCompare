@@ -5,7 +5,7 @@
 npm install
 npm start                # dev
 npm run build:linux      # AppImage → TextCompare-Linux.AppImage
-npm run build:win        # portable exe → TextCompare-Windows.exe
+npm run build:win        # portable exe → TextCompare.exe
 npm run build:all
 ```
 
@@ -14,7 +14,7 @@ npm run build:all
 {
   "appId": "com.textcompare.app",
   "linux": { "target": ["AppImage"], "artifactName": "TextCompare-Linux.${ext}" },
-  "win": { "target": ["portable"], "artifactName": "TextCompare-Windows.${ext}" }
+  "win": { "target": ["portable"], "artifactName": "TextCompare.${ext}" }
 }
 ```
 

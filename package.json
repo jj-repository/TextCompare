@@ -65,7 +65,7 @@
       "icon": "icon.png"
     },
     "portable": {
-      "artifactName": "TextCompare-Windows.${ext}"
+      "artifactName": "TextCompare.${ext}"
     },
     "directories": {
       "output": "dist"
