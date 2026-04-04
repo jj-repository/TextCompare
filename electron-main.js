@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -193,17 +193,11 @@ function handleUpdateResponse(release, silent) {
         return;
       }
 
-      // Download directly — sanitize filename to prevent path traversal
-      const downloadsDir = app.getPath('downloads');
+      // Download next to the running executable
+      const exePath = process.execPath;
+      const exeDir = path.dirname(exePath);
       const safeName = path.basename(asset.name).replace(/[<>:"|?*\x00-\x1f]/g, '_');
       if (!safeName || safeName === '.' || safeName === '..') {
-        isUpdateInProgress = false;
-        shell.openExternal(GITHUB_RELEASES_URL);
-        return;
-      }
-      const destPath = path.join(downloadsDir, safeName);
-      // Final check: resolved path must be inside downloads dir
-      if (!path.resolve(destPath).startsWith(path.resolve(downloadsDir))) {
         isUpdateInProgress = false;
         shell.openExternal(GITHUB_RELEASES_URL);
         return;
@@ -217,27 +211,30 @@ function handleUpdateResponse(release, silent) {
       mainWindow.webContents.send('download-progress', { percent: 0, fileName: asset.name });
 
       try {
-        await downloadFile(asset.browser_download_url, destPath, (downloaded, total) => {
-          const percent = Math.round((downloaded / total) * 100);
-          if (mainWindow) {
-            mainWindow.setProgressBar(percent / 100);
-            mainWindow.webContents.send('download-progress', { percent, fileName: asset.name });
-          }
-        });
-
-        if (mainWindow) {
-          mainWindow.setProgressBar(-1); // Remove progress bar
-          mainWindow.webContents.send('download-progress', null); // Hide overlay
-        }
-
-        if (!mainWindow) {
-          isUpdateInProgress = false;
-          return;
-        }
-
-        // Platform-specific post-download behavior
+        // Platform-specific download and replace
         if (process.platform === 'linux' && process.env.APPIMAGE) {
-          // Linux AppImage: replace the running AppImage and restart
+          // Linux AppImage: download temp file next to AppImage, then replace
+          const appImagePath = process.env.APPIMAGE;
+          const tempPath = appImagePath + '.new';
+
+          await downloadFile(asset.browser_download_url, tempPath, (downloaded, total) => {
+            const percent = Math.round((downloaded / total) * 100);
+            if (mainWindow) {
+              mainWindow.setProgressBar(percent / 100);
+              mainWindow.webContents.send('download-progress', { percent, fileName: asset.name });
+            }
+          });
+
+          if (mainWindow) {
+            mainWindow.setProgressBar(-1);
+            mainWindow.webContents.send('download-progress', null);
+          }
+
+          if (!mainWindow) {
+            isUpdateInProgress = false;
+            return;
+          }
+
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Update Ready',
@@ -248,47 +245,107 @@ function handleUpdateResponse(release, silent) {
           }).then((res) => {
             if (res.response === 0) {
               try {
-                const appImagePath = process.env.APPIMAGE;
-                fs.copyFileSync(destPath, appImagePath);
+                fs.copyFileSync(tempPath, appImagePath);
                 fs.chmodSync(appImagePath, 0o755);
-                fs.unlink(destPath, () => {}); // Clean up temp download (async, best-effort)
+                fs.unlink(tempPath, () => {});
                 spawn(appImagePath, [], { detached: true, stdio: 'ignore' }).unref();
+                isUpdateInProgress = false;
                 app.quit();
               } catch (replaceErr) {
                 isUpdateInProgress = false;
-                // destPath may still exist if copyFileSync failed
-                const detail = fs.existsSync(destPath)
-                  ? `${replaceErr.message}\n\nThe update was saved to:\n${destPath}`
+                const detail = fs.existsSync(tempPath)
+                  ? `${replaceErr.message}\n\nThe update was saved to:\n${tempPath}`
                   : replaceErr.message;
                 dialog.showMessageBox(mainWindow, {
                   type: 'error',
                   title: 'Update Failed',
                   message: 'Could not replace the current version.',
                   detail,
-                  buttons: fs.existsSync(destPath) ? ['Open Downloads Folder', 'OK'] : ['OK']
-                }).then((r) => {
-                  if (r.response === 0 && fs.existsSync(destPath)) shell.showItemInFolder(destPath);
+                  buttons: ['OK']
                 });
               }
             } else {
+              fs.unlink(tempPath, () => {});
               isUpdateInProgress = false;
             }
           });
         } else {
-          // Windows portable (and any other platform): open folder then quit
-          dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Update Ready',
-            message: 'Update downloaded successfully!',
-            detail: `Saved to:\n${destPath}\n\nPlease close this app and run the new version.`,
-            buttons: ['Open in Folder', 'Close'],
-            defaultId: 0
-          }).then((res) => {
-            if (res.response === 0) {
-              shell.showItemInFolder(destPath);
+          // Windows portable: rename-dance (current→.old, .new→current)
+          const newExePath = exePath + '.new';
+          const oldExePath = exePath.replace(/\.exe$/i, '.old');
+
+          await downloadFile(asset.browser_download_url, newExePath, (downloaded, total) => {
+            const percent = Math.round((downloaded / total) * 100);
+            if (mainWindow) {
+              mainWindow.setProgressBar(percent / 100);
+              mainWindow.webContents.send('download-progress', { percent, fileName: asset.name });
             }
-            setTimeout(() => app.quit(), 500);
           });
+
+          if (mainWindow) {
+            mainWindow.setProgressBar(-1);
+            mainWindow.webContents.send('download-progress', null);
+          }
+
+          if (!mainWindow) {
+            isUpdateInProgress = false;
+            return;
+          }
+
+          try {
+            // Remove leftover .old from previous update
+            if (fs.existsSync(oldExePath)) fs.unlinkSync(oldExePath);
+            // Rename running exe → .old
+            fs.renameSync(exePath, oldExePath);
+            // Rename .new → original name
+            fs.renameSync(newExePath, exePath);
+
+            isUpdateInProgress = false;
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Update Complete',
+              message: 'Update installed successfully!',
+              detail: 'Please reopen the app to use the new version.',
+              buttons: ['Close']
+            }).then(() => {
+              app.quit();
+            });
+          } catch (renameErr) {
+            // Fallback: .bat trampoline runs after process exits
+            // Validate paths don't contain quotes (breaks bat quoting)
+            if (newExePath.includes('"') || exePath.includes('"')) {
+              isUpdateInProgress = false;
+              dialog.showMessageBox(mainWindow, {
+                type: 'error', title: 'Update Failed',
+                message: 'Install path contains invalid characters. Please reinstall to a simple path.',
+                buttons: ['OK']
+              });
+              return;
+            }
+            const batPath = path.join(exeDir, `_update_${Date.now()}.bat`);
+            fs.writeFileSync(batPath,
+              `:wait\r\ntasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul && ` +
+              `(timeout /t 1 /nobreak >nul & goto wait)\r\n` +
+              `move /y "${newExePath}" "${exePath}"\r\n` +
+              `del "%~f0"\r\n`
+            );
+            spawn('cmd', ['/c', batPath], {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: true
+            }).unref();
+
+            isUpdateInProgress = false;
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Update Ready',
+              message: 'Update will be applied when you close the app.',
+              detail: 'Please close and reopen the app.',
+              buttons: ['Close Now']
+            }).then(() => {
+              app.quit();
+            });
+          }
         }
       } catch (err) {
         isUpdateInProgress = false;
@@ -511,6 +568,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      webSecurity: true,
       preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'icon.png'),
@@ -630,7 +688,7 @@ function createWindow() {
 }
 
 // IPC handlers (registered once, outside createWindow)
-ipcMain.handle('check-for-updates', () => {
+ipcMain.on('check-for-updates', () => {
   checkForUpdates(false);
 });
 ipcMain.handle('get-settings', () => {
@@ -640,8 +698,7 @@ ipcMain.handle('set-auto-update', (_, enabled) => {
   appSettings.autoCheckUpdates = enabled === true;
   saveSettings(appSettings);
 });
-ipcMain.handle('open-external', (_, url) => {
-  // Only allow https URLs to prevent file:// or custom protocol abuse
+ipcMain.on('open-external', (_, url) => {
   if (typeof url === 'string' && url.startsWith('https://')) {
     shell.openExternal(url);
   }
@@ -652,7 +709,36 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection:', reason);
 });
 
+// Block remote debugging in production
+if (app.isPackaged) {
+  app.commandLine.appendSwitch('inspect', '0');
+  app.commandLine.appendSwitch('remote-debugging-port', '0');
+}
+
+// Restrict navigation and new windows on all webContents
+app.on('web-contents-created', (_, contents) => {
+  contents.on('will-navigate', (event) => {
+    event.preventDefault();
+  });
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+});
+
 app.whenReady().then(() => {
+  // Deny all permission requests (camera, mic, geolocation, etc.)
+  session.defaultSession.setPermissionRequestHandler((_, __, callback) => {
+    callback(false);
+  });
+  // Clean up leftover update artifacts (only match app-specific files)
+  try {
+    const exeDir = path.dirname(process.execPath);
+    const exeName = path.basename(process.execPath);
+    for (const file of fs.readdirSync(exeDir)) {
+      if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.bat$/.test(file)) {
+        try { fs.unlinkSync(path.join(exeDir, file)); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
   // Load settings before creating window
   appSettings = loadSettings();
 

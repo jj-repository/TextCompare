@@ -3,10 +3,13 @@
  * Run with: npm test
  */
 
+const assert = require('assert');
+
 const {
     computeLCSOptimized,
     computeLCSFullMatrix,
     computeLCSSpaceOptimized,
+    computeMyersDiff,
     backtrackLCS,
     escapeHtml,
     debounce,
@@ -22,7 +25,14 @@ function describe(name, fn) {
     fn();
 }
 
+const asyncTests = [];
+
 function it(name, fn) {
+    if (fn.length > 0) {
+        // Async test with done callback — defer it
+        asyncTests.push({ name, fn });
+        return;
+    }
     try {
         fn();
         console.log(`  ✓ ${name}`);
@@ -42,9 +52,7 @@ function expect(actual) {
             }
         },
         toEqual(expected) {
-            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-                throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-            }
+            assert.deepStrictEqual(actual, expected);
         },
         toHaveLength(expected) {
             if (actual.length !== expected) {
@@ -234,13 +242,232 @@ describe('debounce', () => {
         const debounced = debounce(() => {}, 100);
         expect(typeof debounced).toBe('function');
     });
+
+    it('should delay execution and coalesce rapid calls', (done) => {
+        let callCount = 0;
+        let lastArg = null;
+        const debounced = debounce((arg) => {
+            callCount++;
+            lastArg = arg;
+        }, 50);
+
+        debounced('a');
+        debounced('b');
+        debounced('c');
+
+        // Should not have been called yet
+        expect(callCount).toBe(0);
+
+        setTimeout(() => {
+            expect(callCount).toBe(1);
+            expect(lastArg).toBe('c');
+            done();
+        }, 100);
+    });
 });
 
-// Run and report
-console.log('\n' + '='.repeat(50));
-console.log(`Tests: ${passed} passed, ${failed} failed`);
-console.log('='.repeat(50));
+describe('computeLCSSpaceOptimized - large input fallback', () => {
+    it('should return empty sentinel for inputs exceeding 50M threshold', () => {
+        // Create arrays whose product exceeds 50M (e.g., 7072 x 7072 = ~50M)
+        const large = new Array(7072).fill('x');
+        const result = computeLCSSpaceOptimized(large, large);
+        expect(result.type).toBe('empty');
+        expect(result.m).toBe(0);
+        expect(result.n).toBe(0);
+    });
 
-if (failed > 0) {
-    process.exit(1);
+    it('should produce empty matches when backtracked', () => {
+        const sentinel = { type: 'empty', m: 0, n: 0 };
+        const matches = backtrackLCS(sentinel, ['a'], ['b']);
+        expect(matches).toHaveLength(0);
+    });
+});
+
+describe('computeLCSOptimized - routing', () => {
+    it('should use Myers path for large inputs', () => {
+        // Need m*n > 1,000,000 to trigger Myers path
+        const a = new Array(1001).fill(null).map((_, i) => String(i));
+        const b = new Array(1001).fill(null).map((_, i) => String(i));
+        const result = computeLCSOptimized(a, b);
+        expect(result.type).toBe('myers');
+
+        // Verify correctness: identical arrays should fully match
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(1001);
+    });
+});
+
+describe('computeMyersDiff', () => {
+    it('should find matches for identical sequences', () => {
+        const a = ['a', 'b', 'c'];
+        const b = ['a', 'b', 'c'];
+        const result = computeMyersDiff(a, b);
+        expect(result.type).toBe('myers');
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(3);
+    });
+
+    it('should find matches with insertions', () => {
+        const a = ['a', 'c'];
+        const b = ['a', 'b', 'c'];
+        const result = computeMyersDiff(a, b);
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(2);
+        expect(matches[0]).toEqual({ type: 'equal', left: 0, right: 0 });
+        expect(matches[1]).toEqual({ type: 'equal', left: 1, right: 2 });
+    });
+
+    it('should find matches with deletions', () => {
+        const a = ['a', 'b', 'c'];
+        const b = ['a', 'c'];
+        const result = computeMyersDiff(a, b);
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(2);
+        expect(matches[0]).toEqual({ type: 'equal', left: 0, right: 0 });
+        expect(matches[1]).toEqual({ type: 'equal', left: 2, right: 1 });
+    });
+
+    it('should handle completely different sequences', () => {
+        const a = ['x', 'y'];
+        const b = ['a', 'b'];
+        const result = computeMyersDiff(a, b);
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(0);
+    });
+
+    it('should handle empty sequences', () => {
+        const result = computeMyersDiff([], []);
+        expect(result.type).toBe('myers');
+        expect(backtrackLCS(result, [], [])).toHaveLength(0);
+    });
+
+    it('should handle one empty sequence', () => {
+        const result = computeMyersDiff(['a', 'b'], []);
+        const matches = backtrackLCS(result, ['a', 'b'], []);
+        expect(matches).toHaveLength(0);
+    });
+
+    it('should handle repeated elements', () => {
+        const a = ['a', 'a', 'b'];
+        const b = ['a', 'b', 'a'];
+        const result = computeMyersDiff(a, b);
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(2);
+    });
+
+    it('should work correctly for large identical sequences', () => {
+        const a = new Array(2000).fill(null).map((_, i) => String(i));
+        const b = a.slice();
+        const result = computeMyersDiff(a, b);
+        expect(result.type).toBe('myers');
+        const matches = backtrackLCS(result, a, b);
+        expect(matches).toHaveLength(2000);
+    });
+
+    it('should work correctly for large sequences with few diffs', () => {
+        const a = new Array(2000).fill(null).map((_, i) => String(i));
+        const b = a.slice();
+        b[500] = 'CHANGED';
+        b.splice(1000, 0, 'INSERTED');
+        const result = computeMyersDiff(a, b);
+        const matches = backtrackLCS(result, a, b);
+        // Should find 1999 matches (all except the changed line)
+        expect(matches).toHaveLength(1999);
+    });
+});
+
+describe('backtrackLCS - optimized path edge cases', () => {
+    it('should handle partial matches via optimized path', () => {
+        const a = ['a', 'x', 'b', 'y', 'c'];
+        const b = ['a', 'b', 'c'];
+        const lcsResult = computeLCSSpaceOptimized(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(3); // a, b, c
+    });
+
+    it('should handle no matches via optimized path', () => {
+        const a = ['x', 'y', 'z'];
+        const b = ['a', 'b', 'c'];
+        const lcsResult = computeLCSSpaceOptimized(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(0);
+    });
+});
+
+describe('LCS end-to-end correctness', () => {
+    it('should handle insertions at beginning', () => {
+        const a = ['b', 'c'];
+        const b = ['a', 'b', 'c'];
+        const lcsResult = computeLCSFullMatrix(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(2);
+        expect(matches[0]).toEqual({ type: 'equal', left: 0, right: 1 });
+        expect(matches[1]).toEqual({ type: 'equal', left: 1, right: 2 });
+    });
+
+    it('should handle deletions at end', () => {
+        const a = ['a', 'b', 'c'];
+        const b = ['a', 'b'];
+        const lcsResult = computeLCSFullMatrix(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(2);
+    });
+
+    it('should handle repeated elements', () => {
+        const a = ['a', 'a', 'b'];
+        const b = ['a', 'b', 'a'];
+        const lcsResult = computeLCSFullMatrix(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(2); // LCS is 'a','b' or 'a','a'
+    });
+
+    it('should handle single element vs empty', () => {
+        const a = ['a'];
+        const b = [];
+        const lcsResult = computeLCSFullMatrix(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(0);
+    });
+
+    it('should handle empty vs single element', () => {
+        const a = [];
+        const b = ['a'];
+        const lcsResult = computeLCSFullMatrix(a, b);
+        const matches = backtrackLCS(lcsResult, a, b);
+        expect(matches).toHaveLength(0);
+    });
+});
+
+// Run async tests, then report
+function runAsyncTests(index) {
+    if (index >= asyncTests.length) {
+        console.log('\n' + '='.repeat(50));
+        console.log(`Tests: ${passed} passed, ${failed} failed`);
+        console.log('='.repeat(50));
+        if (failed > 0) process.exit(1);
+        return;
+    }
+    const { name, fn } = asyncTests[index];
+    try {
+        fn(() => {
+            console.log(`  ✓ ${name}`);
+            passed++;
+            runAsyncTests(index + 1);
+        });
+    } catch (e) {
+        console.log(`  ✗ ${name}`);
+        console.log(`    ${e.message}`);
+        failed++;
+        runAsyncTests(index + 1);
+    }
+}
+
+if (asyncTests.length > 0) {
+    console.log('\nAsync tests');
+    runAsyncTests(0);
+} else {
+    console.log('\n' + '='.repeat(50));
+    console.log(`Tests: ${passed} passed, ${failed} failed`);
+    console.log('='.repeat(50));
+    if (failed > 0) process.exit(1);
 }

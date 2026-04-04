@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 let downloadProgressHandler = null;
 
 contextBridge.exposeInMainWorld('electron', {
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   onDownloadProgress: (callback) => {
     // Remove previous listener to prevent memory leak
     if (downloadProgressHandler) {
@@ -12,8 +12,13 @@ contextBridge.exposeInMainWorld('electron', {
     }
     downloadProgressHandler = (_, data) => callback(data);
     ipcRenderer.on('download-progress', downloadProgressHandler);
+    // Return unsubscribe function
+    return () => {
+      ipcRenderer.removeListener('download-progress', downloadProgressHandler);
+      downloadProgressHandler = null;
+    };
   },
   getSettings: () => ipcRenderer.invoke('get-settings'),
   setAutoUpdate: (enabled) => ipcRenderer.invoke('set-auto-update', enabled),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openExternal: (url) => ipcRenderer.send('open-external', url),
 });

@@ -1,6 +1,6 @@
 {
   "name": "textcompare",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
   "repository": {
@@ -48,6 +48,9 @@
       "index.html",
       "electron-main.js",
       "preload.js",
+      "src/app.js",
+      "src/diff-utils.js",
+      "src/diff-worker.js",
       "takodachi.webp"
     ],
     "linux": {
