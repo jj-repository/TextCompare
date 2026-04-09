@@ -6,6 +6,8 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions: {}
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -38,6 +40,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run tests
+        run: npm test
 
       - name: Build for Linux
         if: matrix.platform == 'linux'
@@ -94,14 +99,12 @@ jobs:
           cat checksums-sha256.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
-        with:
-          files: |
-            artifacts/linux/*
-            artifacts/windows/*
-            artifacts/checksums-sha256.txt
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            artifacts/linux/* \
+            artifacts/windows/* \
+            artifacts/checksums-sha256.txt \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
