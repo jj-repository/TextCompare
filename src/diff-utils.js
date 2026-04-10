@@ -3,7 +3,7 @@
  * Extracted from index.html for testability
  */
 
-const LCS_FULL_MATRIX_THRESHOLD = 1000;
+const LCS_FULL_MATRIX_MAX_CELLS = 1_000_000;
 
 /**
  * Compute LCS (Longest Common Subsequence) with automatic optimization selection
@@ -15,7 +15,7 @@ function computeLCSOptimized(a, b) {
     const m = a.length, n = b.length;
 
     // For small inputs, use full matrix (simpler backtracking)
-    if (m * n <= LCS_FULL_MATRIX_THRESHOLD * LCS_FULL_MATRIX_THRESHOLD) {
+    if (m * n <= LCS_FULL_MATRIX_MAX_CELLS) {
         return computeLCSFullMatrix(a, b);
     }
 
@@ -146,48 +146,6 @@ function computeLCSFullMatrix(a, b) {
 }
 
 /**
- * Compute LCS using space-optimized algorithm (O(n) space)
- * @param {Array} a - First sequence
- * @param {Array} b - Second sequence
- * @returns {Object} LCS result with decisions array
- */
-function computeLCSSpaceOptimized(a, b) {
-    const m = a.length, n = b.length;
-
-    if (m * n > 50_000_000) { // ~50MB limit for Uint8Array
-        // Fall back: return empty match set so all lines show as changed
-        return { type: 'empty', m: 0, n: 0 };
-    }
-
-    // Use two rows instead of full matrix
-    let prev = new Array(n + 1).fill(0);
-    let curr = new Array(n + 1).fill(0);
-
-    // Store decisions for backtracking (bit-packed for memory efficiency)
-    // 0 = came from left, 1 = came from top, 2 = diagonal match
-    const decisions = new Array(m);
-
-    for (let i = 1; i <= m; i++) {
-        decisions[i - 1] = new Uint8Array(n);
-        for (let j = 1; j <= n; j++) {
-            if (a[i - 1] === b[j - 1]) {
-                curr[j] = prev[j - 1] + 1;
-                decisions[i - 1][j - 1] = 2; // diagonal
-            } else if (prev[j] > curr[j - 1]) {
-                curr[j] = prev[j];
-                decisions[i - 1][j - 1] = 1; // top
-            } else {
-                curr[j] = curr[j - 1];
-                decisions[i - 1][j - 1] = 0; // left
-            }
-        }
-        [prev, curr] = [curr, prev];
-    }
-
-    return { type: 'optimized', decisions, m, n };
-}
-
-/**
  * Backtrack LCS result to get matching positions
  * @param {Object} lcsResult - Result from computeLCS functions
  * @param {Array} a - First sequence
@@ -195,7 +153,6 @@ function computeLCSSpaceOptimized(a, b) {
  * @returns {Array} Array of matching positions
  */
 function backtrackLCS(lcsResult, a, b) {
-    // Myers results already contain pre-computed matches
     if (lcsResult.type === 'myers') {
         return lcsResult.matches;
     }
@@ -203,56 +160,20 @@ function backtrackLCS(lcsResult, a, b) {
     const result = [];
     let i = lcsResult.m, j = lcsResult.n;
 
-    // Bounds validation to prevent index errors
     if (i < 0 || j < 0 || i > a.length || j > b.length) {
-        console.error('LCS backtracking bounds error: invalid indices');
         return result;
     }
 
-    if (lcsResult.type === 'full') {
-        const dp = lcsResult.dp;
-        // Validate dp matrix exists and has correct dimensions
-        if (!dp || dp.length <= i) {
-            console.error('LCS backtracking error: invalid dp matrix');
-            return result;
-        }
-        while (i > 0 && j > 0) {
-            // Validate row exists before accessing
-            if (!dp[i] || !dp[i - 1]) {
-                console.error('LCS backtracking error: missing dp row');
-                break;
-            }
-            if (a[i - 1] === b[j - 1]) {
-                result.push({ type: 'equal', left: i - 1, right: j - 1 });
-                i--; j--;
-            } else if (dp[i - 1][j] > dp[i][j - 1]) {
-                i--;
-            } else {
-                j--;
-            }
-        }
-    } else {
-        const decisions = lcsResult.decisions;
-        // Validate decisions array exists
-        if (!decisions || decisions.length < i) {
-            console.error('LCS backtracking error: invalid decisions array');
-            return result;
-        }
-        while (i > 0 && j > 0) {
-            // Validate indices before accessing
-            if (!decisions[i - 1] || j - 1 >= decisions[i - 1].length) {
-                console.error('LCS backtracking error: invalid decision index');
-                break;
-            }
-            const decision = decisions[i - 1][j - 1];
-            if (decision === 2) { // diagonal match
-                result.push({ type: 'equal', left: i - 1, right: j - 1 });
-                i--; j--;
-            } else if (decision === 1) { // top
-                i--;
-            } else { // left
-                j--;
-            }
+    const dp = lcsResult.dp;
+    if (!dp || dp.length <= i) return result;
+    while (i > 0 && j > 0) {
+        if (a[i - 1] === b[j - 1]) {
+            result.push({ type: 'equal', left: i - 1, right: j - 1 });
+            i--; j--;
+        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
         }
     }
 
@@ -288,34 +209,15 @@ function debounce(fn, delay) {
 }
 
 /**
- * Compare two version strings
- * @param {string} v1 - First version
- * @param {string} v2 - Second version
- * @returns {number} 1 if v1 > v2, -1 if v1 < v2, 0 if equal
- */
-function compareVersions(v1, v2) {
-    const parts1 = v1.replace(/^v/, '').split('.').map(Number);
-    const parts2 = v2.replace(/^v/, '').split('.').map(Number);
-
-    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-        const p1 = parts1[i] || 0;
-        const p2 = parts2[i] || 0;
-        if (p1 > p2) return 1;
-        if (p1 < p2) return -1;
-    }
-    return 0;
-}
-
-/**
  * Character-level diff between two strings, returning HTML with change highlighting.
- * Skips LCS for lines > 2000 combined chars to avoid O(k^2) per line.
+ * Skips LCS for lines > 500 combined chars to avoid O(k^2) per line.
  */
 function diffChars(left, right) {
     if (left === right) return { left: escapeHtml(left), right: escapeHtml(right) };
     if (!left && right) return { left: '<span class="diff-char-missing"></span>', right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>' };
     if (left && !right) return { left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>', right: '<span class="diff-char-missing"></span>' };
 
-    if (left.length + right.length > 2000) {
+    if (left.length + right.length > 500) {
         return {
             left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>',
             right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>'
@@ -364,26 +266,22 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         computeLCSOptimized,
         computeLCSFullMatrix,
-        computeLCSSpaceOptimized,
         computeMyersDiff,
         backtrackLCS,
         diffChars,
         escapeHtml,
         debounce,
-        compareVersions,
-        LCS_FULL_MATRIX_THRESHOLD
+        LCS_FULL_MATRIX_MAX_CELLS
     };
 } else if (typeof window !== 'undefined') {
     window.DiffUtils = {
         computeLCSOptimized,
         computeLCSFullMatrix,
-        computeLCSSpaceOptimized,
         computeMyersDiff,
         backtrackLCS,
         diffChars,
         escapeHtml,
         debounce,
-        compareVersions,
-        LCS_FULL_MATRIX_THRESHOLD
+        LCS_FULL_MATRIX_MAX_CELLS
     };
 }

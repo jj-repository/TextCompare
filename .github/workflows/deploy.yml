@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -32,8 +32,10 @@ jobs:
         run: |
           mkdir -p _site/src
           cp index.html icon.png takodachi.webp _site/
-          cp src/diff-utils.js src/diff-worker.js src/app.js _site/src/
+          cp src/*.js _site/src/
           cp LICENSE README.md _site/ 2>/dev/null || true
+          # Verify critical files exist
+          test -f _site/index.html && test -f _site/src/app.js && test -f _site/src/diff-utils.js && test -f _site/src/diff-worker.js
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0

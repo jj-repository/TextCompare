@@ -8,12 +8,12 @@ const assert = require('assert');
 const {
     computeLCSOptimized,
     computeLCSFullMatrix,
-    computeLCSSpaceOptimized,
     computeMyersDiff,
     backtrackLCS,
+    diffChars,
     escapeHtml,
     debounce,
-    compareVersions
+    LCS_FULL_MATRIX_MAX_CELLS
 } = require('./diff-utils');
 
 // Simple test framework (Node.js built-in test runner compatible)
@@ -110,34 +110,6 @@ describe('escapeHtml', () => {
     });
 });
 
-describe('compareVersions', () => {
-    it('should return 1 when v1 > v2', () => {
-        expect(compareVersions('1.2.0', '1.1.0')).toBe(1);
-        expect(compareVersions('2.0.0', '1.9.9')).toBe(1);
-        expect(compareVersions('1.0.1', '1.0.0')).toBe(1);
-    });
-
-    it('should return -1 when v1 < v2', () => {
-        expect(compareVersions('1.0.0', '1.0.1')).toBe(-1);
-        expect(compareVersions('1.0.0', '2.0.0')).toBe(-1);
-    });
-
-    it('should return 0 when versions are equal', () => {
-        expect(compareVersions('1.0.0', '1.0.0')).toBe(0);
-        expect(compareVersions('2.1.3', '2.1.3')).toBe(0);
-    });
-
-    it('should handle v prefix', () => {
-        expect(compareVersions('v1.0.0', '1.0.0')).toBe(0);
-        expect(compareVersions('v2.0.0', 'v1.0.0')).toBe(1);
-    });
-
-    it('should handle different version lengths', () => {
-        expect(compareVersions('1.0', '1.0.0')).toBe(0);
-        expect(compareVersions('1.0.1', '1.0')).toBe(1);
-    });
-});
-
 describe('computeLCSFullMatrix', () => {
     it('should find LCS for identical strings', () => {
         const a = ['a', 'b', 'c'];
@@ -167,18 +139,6 @@ describe('computeLCSFullMatrix', () => {
     });
 });
 
-describe('computeLCSSpaceOptimized', () => {
-    it('should return correct type', () => {
-        const result = computeLCSSpaceOptimized(['a', 'b'], ['a', 'b']);
-        expect(result.type).toBe('optimized');
-    });
-
-    it('should have decisions array', () => {
-        const result = computeLCSSpaceOptimized(['a', 'b', 'c'], ['a', 'c']);
-        expect(result.decisions.length).toBe(3);
-    });
-});
-
 describe('backtrackLCS', () => {
     it('should backtrack full matrix correctly', () => {
         const a = ['a', 'b', 'c'];
@@ -187,14 +147,6 @@ describe('backtrackLCS', () => {
         const matches = backtrackLCS(lcsResult, a, b);
         expect(matches).toHaveLength(3);
         expect(matches[0]).toEqual({ type: 'equal', left: 0, right: 0 });
-    });
-
-    it('should backtrack optimized correctly', () => {
-        const a = ['a', 'b', 'c'];
-        const b = ['a', 'b', 'c'];
-        const lcsResult = computeLCSSpaceOptimized(a, b);
-        const matches = backtrackLCS(lcsResult, a, b);
-        expect(matches).toHaveLength(3);
     });
 
     it('should handle partial matches', () => {
@@ -263,23 +215,6 @@ describe('debounce', () => {
             expect(lastArg).toBe('c');
             done();
         }, 100);
-    });
-});
-
-describe('computeLCSSpaceOptimized - large input fallback', () => {
-    it('should return empty sentinel for inputs exceeding 50M threshold', () => {
-        // Create arrays whose product exceeds 50M (e.g., 7072 x 7072 = ~50M)
-        const large = new Array(7072).fill('x');
-        const result = computeLCSSpaceOptimized(large, large);
-        expect(result.type).toBe('empty');
-        expect(result.m).toBe(0);
-        expect(result.n).toBe(0);
-    });
-
-    it('should produce empty matches when backtracked', () => {
-        const sentinel = { type: 'empty', m: 0, n: 0 };
-        const matches = backtrackLCS(sentinel, ['a'], ['b']);
-        expect(matches).toHaveLength(0);
     });
 });
 
@@ -376,24 +311,6 @@ describe('computeMyersDiff', () => {
     });
 });
 
-describe('backtrackLCS - optimized path edge cases', () => {
-    it('should handle partial matches via optimized path', () => {
-        const a = ['a', 'x', 'b', 'y', 'c'];
-        const b = ['a', 'b', 'c'];
-        const lcsResult = computeLCSSpaceOptimized(a, b);
-        const matches = backtrackLCS(lcsResult, a, b);
-        expect(matches).toHaveLength(3); // a, b, c
-    });
-
-    it('should handle no matches via optimized path', () => {
-        const a = ['x', 'y', 'z'];
-        const b = ['a', 'b', 'c'];
-        const lcsResult = computeLCSSpaceOptimized(a, b);
-        const matches = backtrackLCS(lcsResult, a, b);
-        expect(matches).toHaveLength(0);
-    });
-});
-
 describe('LCS end-to-end correctness', () => {
     it('should handle insertions at beginning', () => {
         const a = ['b', 'c'];
@@ -435,6 +352,47 @@ describe('LCS end-to-end correctness', () => {
         const lcsResult = computeLCSFullMatrix(a, b);
         const matches = backtrackLCS(lcsResult, a, b);
         expect(matches).toHaveLength(0);
+    });
+});
+
+describe('diffChars', () => {
+    it('should return identical escaped text for equal strings', () => {
+        const result = diffChars('hello', 'hello');
+        expect(result.left).toBe('hello');
+        expect(result.right).toBe('hello');
+    });
+
+    it('should escape HTML in equal strings', () => {
+        const result = diffChars('<b>', '<b>');
+        expect(result.left).toBe('&lt;b&gt;');
+    });
+
+    it('should highlight added text', () => {
+        const result = diffChars('', 'added');
+        expect(result.right).toContain('diff-char-changed');
+        expect(result.right).toContain('added');
+    });
+
+    it('should highlight removed text', () => {
+        const result = diffChars('removed', '');
+        expect(result.left).toContain('diff-char-changed');
+        expect(result.left).toContain('removed');
+    });
+
+    it('should highlight character-level differences', () => {
+        const result = diffChars('abc', 'axc');
+        expect(result.left).toContain('diff-char-changed');
+        expect(result.right).toContain('diff-char-changed');
+        // Common chars a and c should not be wrapped in spans
+        expect(result.left).toContain('a');
+        expect(result.left).toContain('c');
+    });
+
+    it('should bail out for long strings and mark entire line as changed', () => {
+        const long = 'x'.repeat(300);
+        const result = diffChars(long, long.replace(/x/g, 'y'));
+        expect(result.left).toContain('diff-char-changed');
+        expect(result.right).toContain('diff-char-changed');
     });
 });
 

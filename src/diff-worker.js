@@ -8,7 +8,11 @@ if (typeof importScripts === 'function') {
     importScripts('./diff-utils.js');
 }
 
-const { computeLCSOptimized, backtrackLCS, escapeHtml, diffChars } = (typeof self !== 'undefined' && self.DiffUtils) || {};
+if (typeof self !== 'undefined' && !self.DiffUtils) {
+    throw new Error('Failed to load diff-utils.js — DiffUtils not available');
+}
+
+const { computeLCSOptimized, backtrackLCS, escapeHtml, diffChars } = self.DiffUtils;
 
 self.onmessage = function(e) {
     const { leftText, rightText, ignoreWhitespace, ignoreCase } = e.data;

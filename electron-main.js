@@ -35,11 +35,6 @@ function loadSettings() {
 
 function saveSettings(settings) {
   try {
-    // Ensure the directory exists before writing
-    const dir = path.dirname(settingsFile);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
   } catch (e) {
     console.error('Failed to save settings:', e);
@@ -74,6 +69,51 @@ function findDownloadAsset(assets) {
     return assets.find(a => a.name.endsWith('.AppImage'));
   }
   return null;
+}
+
+// Fetch expected SHA-256 hash for an asset from checksums-sha256.txt
+async function fetchExpectedSha256(releaseData, assetName) {
+  const checksumAsset = releaseData.assets.find(a => a.name === 'checksums-sha256.txt');
+  if (!checksumAsset) return null;
+
+  try {
+    const response = await new Promise((resolve, reject) => {
+      const url = new URL(checksumAsset.browser_download_url);
+      const makeRequest = (reqUrl, redirectCount = 0) => {
+        if (redirectCount > 5) { reject(new Error('Too many redirects')); return; }
+        if (reqUrl.protocol !== 'https:') { reject(new Error('HTTPS required')); return; }
+        https.get(reqUrl, { headers: { 'User-Agent': `TextCompare/${APP_VERSION}` } }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            makeRequest(new URL(res.headers.location), redirectCount + 1);
+          } else {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve(data));
+          }
+        }).on('error', reject);
+      };
+      makeRequest(url);
+    });
+
+    for (const line of response.trim().split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 2 && parts[1] === assetName) {
+        return parts[0].toLowerCase();
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch checksums:', e.message);
+  }
+  return null;
+}
+
+// Compute SHA-256 hash of a local file
+function computeFileSha256(filePath) {
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256');
+  const data = fs.readFileSync(filePath);
+  hash.update(data);
+  return hash.digest('hex').toLowerCase();
 }
 
 // Download a file from URL, following redirects
@@ -235,6 +275,17 @@ function handleUpdateResponse(release, silent) {
             return;
           }
 
+          // Verify SHA-256 before applying
+          const expectedHashLinux = await fetchExpectedSha256(release, asset.name);
+          if (expectedHashLinux) {
+            const actualHashLinux = computeFileSha256(tempPath);
+            if (actualHashLinux !== expectedHashLinux) {
+              fs.unlinkSync(tempPath);
+              throw new Error(`SHA-256 mismatch for ${asset.name}! Expected: ${expectedHashLinux.substring(0,16)}... Got: ${actualHashLinux.substring(0,16)}...`);
+            }
+            console.log(`SHA-256 verified for ${asset.name}`);
+          }
+
           dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Update Ready',
@@ -290,6 +341,17 @@ function handleUpdateResponse(release, silent) {
           if (!mainWindow) {
             isUpdateInProgress = false;
             return;
+          }
+
+          // Verify SHA-256 before applying
+          const expectedHashWin = await fetchExpectedSha256(release, asset.name);
+          if (expectedHashWin) {
+            const actualHashWin = computeFileSha256(newExePath);
+            if (actualHashWin !== expectedHashWin) {
+              fs.unlinkSync(newExePath);
+              throw new Error(`SHA-256 mismatch for ${asset.name}! Expected: ${expectedHashWin.substring(0,16)}... Got: ${actualHashWin.substring(0,16)}...`);
+            }
+            console.log(`SHA-256 verified for ${asset.name}`);
           }
 
           try {
@@ -365,6 +427,8 @@ function handleUpdateResponse(release, silent) {
           });
         }
       }
+    }).catch(() => {
+      isUpdateInProgress = false;
     });
   } else {
     isUpdateInProgress = false;
@@ -535,18 +599,15 @@ function saveWindowState() {
   if (!mainWindow) return;
 
   try {
+    // Always save normal bounds so unmaximize restores correctly
+    const bounds = mainWindow.getNormalBounds();
     const state = {
-      isMaximized: mainWindow.isMaximized()
+      isMaximized: mainWindow.isMaximized(),
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y
     };
-
-    // Only save bounds if not maximized
-    if (!state.isMaximized) {
-      const bounds = mainWindow.getBounds();
-      state.width = bounds.width;
-      state.height = bounds.height;
-      state.x = bounds.x;
-      state.y = bounds.y;
-    }
 
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
   } catch (err) {

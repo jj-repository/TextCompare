@@ -2,7 +2,7 @@
     'use strict';
 
     // Import shared utilities from diff-utils.js
-    const { computeLCSOptimized, backtrackLCS, escapeHtml, debounce } = window.DiffUtils;
+    const { escapeHtml } = window.DiffUtils;
 
     // Web Worker for off-main-thread diff computation
     let diffWorker = null;
@@ -23,6 +23,7 @@
     let currentDiffIndex = -1;
     let isCompareMode = false;
     let isComparing = false;
+    let lastFocusedTextarea = null;
 
     // DOM Elements
     const leftText = document.getElementById('leftText');
@@ -63,19 +64,21 @@
         });
 
         // Sync scroll (using requestAnimationFrame for smooth frame-aligned sync)
-        let scrollRafId = null;
-        let diffScrollRafId = null;
+        let leftScrollRafId = null;
+        let rightScrollRafId = null;
+        let leftDiffScrollRafId = null;
+        let rightDiffScrollRafId = null;
         leftText.addEventListener('scroll', () => {
-            if (!scrollRafId) scrollRafId = requestAnimationFrame(() => { syncScroll('left'); scrollRafId = null; });
+            if (!leftScrollRafId) leftScrollRafId = requestAnimationFrame(() => { syncScroll('left'); leftScrollRafId = null; });
         });
         rightText.addEventListener('scroll', () => {
-            if (!scrollRafId) scrollRafId = requestAnimationFrame(() => { syncScroll('right'); scrollRafId = null; });
+            if (!rightScrollRafId) rightScrollRafId = requestAnimationFrame(() => { syncScroll('right'); rightScrollRafId = null; });
         });
         leftDiff.addEventListener('scroll', () => {
-            if (!diffScrollRafId) diffScrollRafId = requestAnimationFrame(() => { syncScrollDiff('left'); diffScrollRafId = null; });
+            if (!leftDiffScrollRafId) leftDiffScrollRafId = requestAnimationFrame(() => { syncScrollDiff('left'); leftDiffScrollRafId = null; });
         });
         rightDiff.addEventListener('scroll', () => {
-            if (!diffScrollRafId) diffScrollRafId = requestAnimationFrame(() => { syncScrollDiff('right'); diffScrollRafId = null; });
+            if (!rightDiffScrollRafId) rightDiffScrollRafId = requestAnimationFrame(() => { syncScrollDiff('right'); rightDiffScrollRafId = null; });
         });
 
         // Double-click on diff view to exit compare mode and edit
@@ -137,8 +140,8 @@
                 clearAll();
             }
         });
-        // Track last focused textarea for undo
-        let lastFocusedTextarea = leftText;
+        // Track last focused textarea for undo and save
+        lastFocusedTextarea = leftText;
         leftText.addEventListener('focus', () => { lastFocusedTextarea = leftText; });
         rightText.addEventListener('focus', () => { lastFocusedTextarea = rightText; });
         document.getElementById('btnUndo').addEventListener('click', () => {
@@ -232,10 +235,7 @@
     function updateLineNumbers(side) {
         const text = side === 'left' ? leftText : rightText;
         const lineNums = side === 'left' ? leftLineNumbers : rightLineNumbers;
-        let count = 1;
-        for (let i = 0; i < text.value.length; i++) {
-            if (text.value[i] === '\n') count++;
-        }
+        const count = text.value.split('\n').length;
         if (count === prevLineCount[side]) return;
         prevLineCount[side] = count;
         lineNums.textContent = Array.from({length: count}, (_, i) => i + 1).join('\n');
@@ -418,6 +418,7 @@
     const BUFFER_LINES = 30; // extra lines above/below viewport
     let vScrollData = null;
     let vScrollRenderedRange = { start: -1, end: -1 };
+    let diffIndexToRow = null; // O(1) lookup: diff index → row index
 
     function measureLineHeight() {
         const probe = document.createElement('div');
@@ -474,6 +475,13 @@
         };
         vScrollRenderedRange = { start: -1, end: -1 };
 
+        // Build O(1) diff-index-to-row lookup
+        diffIndexToRow = {};
+        for (let i = 0; i < result.leftHtmlParts.length; i++) {
+            const match = result.leftHtmlParts[i].match(/data-diff="(\d+)"/);
+            if (match) diffIndexToRow[match[1]] = i;
+        }
+
         leftText.classList.add('hidden');
         rightText.classList.add('hidden');
         leftDiff.classList.remove('hidden');
@@ -486,6 +494,8 @@
         };
         leftDiff._vScrollHandler = onDiffScroll;
         leftDiff.addEventListener('scroll', onDiffScroll);
+        rightDiff._vScrollHandler = onDiffScroll;
+        rightDiff.addEventListener('scroll', onDiffScroll);
 
         isCompareMode = true;
         updateDiffCounter();
@@ -546,13 +556,21 @@
             leftDiff.removeEventListener('scroll', leftDiff._vScrollHandler);
             leftDiff._vScrollHandler = null;
         }
+        if (rightDiff._vScrollHandler) {
+            rightDiff.removeEventListener('scroll', rightDiff._vScrollHandler);
+            rightDiff._vScrollHandler = null;
+        }
         if (diffWorker) {
             diffWorker.terminate();
             diffWorker = null;
         }
         vScrollData = null;
         vScrollRenderedRange = { start: -1, end: -1 };
+        diffIndexToRow = null;
 
+        // Reset cache so line numbers rebuild after virtual scroll HTML
+        prevLineCount.left = 0;
+        prevLineCount.right = 0;
         updateLineNumbers('left');
         updateLineNumbers('right');
 
@@ -575,15 +593,9 @@
     function highlightCurrentDiff() {
         if (currentDiffIndex < 0 || currentDiffIndex >= differences.length) return;
 
-        if (vScrollData) {
-            let targetRow = -1;
-            for (let i = 0; i < vScrollData.leftParts.length; i++) {
-                if (vScrollData.leftParts[i].includes(`data-diff="${currentDiffIndex}"`)) {
-                    targetRow = i;
-                    break;
-                }
-            }
-            if (targetRow >= 0) {
+        if (vScrollData && diffIndexToRow) {
+            const targetRow = diffIndexToRow[currentDiffIndex];
+            if (targetRow !== undefined) {
                 const targetScroll = Math.max(0, (targetRow * LINE_HEIGHT) - (leftDiff.clientHeight / 2));
                 leftDiff.scrollTop = targetScroll;
                 renderVisibleLines(targetScroll);
@@ -667,12 +679,9 @@
         } else if (e.ctrlKey && e.key === 'ArrowDown') {
             e.preventDefault();
             nextDiff();
-        } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+        } else if (e.ctrlKey && e.key.toLowerCase() === 's') {
             e.preventDefault();
-            saveFile('left');
-        } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 's') {
-            e.preventDefault();
-            saveFile('right');
+            saveFile(lastFocusedTextarea === leftText ? 'left' : 'right');
         } else if (e.key === 'Escape') {
             document.getElementById('settingsModal').classList.remove('active');
             if (isCompareMode) exitCompareMode();
