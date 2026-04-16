@@ -15,7 +15,7 @@ if (typeof self !== 'undefined' && !self.DiffUtils) {
 const { computeLCSOptimized, backtrackLCS, escapeHtml, diffChars } = self.DiffUtils;
 
 self.onmessage = function(e) {
-    const { leftText, rightText, ignoreWhitespace, ignoreCase } = e.data;
+    const { generation, leftText, rightText, ignoreWhitespace, ignoreCase } = e.data;
 
     try {
         const leftLines = leftText.split('\n');
@@ -99,6 +99,7 @@ self.onmessage = function(e) {
 
         self.postMessage({
             type: 'result',
+            generation,
             differences,
             leftHtmlParts,
             rightHtmlParts,
@@ -106,6 +107,6 @@ self.onmessage = function(e) {
             rightLineNumParts
         });
     } catch (error) {
-        self.postMessage({ type: 'error', message: error.message });
+        self.postMessage({ type: 'error', generation, message: error.message });
     }
 };

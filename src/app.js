@@ -4,8 +4,10 @@
     // Import shared utilities from diff-utils.js
     const { escapeHtml } = window.DiffUtils;
 
-    // Web Worker for off-main-thread diff computation
+    // Web Worker for off-main-thread diff computation.
+    // Kept alive across compare sessions; stale results are discarded via generation counter.
     let diffWorker = null;
+    let compareGeneration = 0;
     function getDiffWorker() {
         if (!diffWorker) {
             diffWorker = new Worker('src/diff-worker.js');
@@ -515,8 +517,11 @@
         isComparing = true;
         loadingOverlay.classList.add('active');
 
+        const gen = ++compareGeneration;
         const worker = getDiffWorker();
         worker.onmessage = function(e) {
+            // Discard results from superseded compare runs
+            if (e.data.generation !== compareGeneration) return;
             try {
                 if (e.data.type === 'result') {
                     applyDiffResults(e.data);
@@ -535,9 +540,12 @@
             loadingOverlay.classList.remove('active');
             isComparing = false;
             statusCenter.textContent = 'Comparison failed';
+            // Drop the broken worker so the next compare spawns a fresh one
+            if (diffWorker) { try { diffWorker.terminate(); } catch (_) {} diffWorker = null; }
         };
 
         worker.postMessage({
+            generation: gen,
             leftText: leftText.value,
             rightText: rightText.value,
             ignoreWhitespace: ignoreWhitespaceCheckbox.checked,
@@ -560,10 +568,9 @@
             rightDiff.removeEventListener('scroll', rightDiff._vScrollHandler);
             rightDiff._vScrollHandler = null;
         }
-        if (diffWorker) {
-            diffWorker.terminate();
-            diffWorker = null;
-        }
+        // Bump generation so any in-flight worker result gets discarded.
+        // Worker stays alive — avoids spawn overhead on rapid compare/exit cycles.
+        compareGeneration++;
         vScrollData = null;
         vScrollRenderedRange = { start: -1, end: -1 };
         diffIndexToRow = null;
@@ -622,32 +629,49 @@
         }
     }
 
-    // Minimap
+    // Minimap — bucketed rendering keeps DOM size bounded regardless of diff count.
+    // Each bucket renders at most one marker per type; click targets the first diff in the bucket.
+    const MINIMAP_BUCKET_PX = 4;
     function updateMinimap() {
         leftMinimap.textContent = '';
         rightMinimap.textContent = '';
 
         const totalLines = vScrollData ? vScrollData.totalLines : 0;
-        if (totalLines === 0) return;
+        if (totalLines === 0 || differences.length === 0) return;
+
+        const minimapHeight = leftMinimap.clientHeight || 400;
+        const bucketCount = Math.max(1, Math.floor(minimapHeight / MINIMAP_BUCKET_PX));
+
+        // bucket -> { type -> firstDiffIdx }. Preserves first-hit index per (bucket, type).
+        const buckets = new Map();
+        for (let idx = 0; idx < differences.length; idx++) {
+            const diff = differences[idx];
+            const lineNum = diff.leftLine || diff.rightLine || 1;
+            const bucketIdx = Math.min(bucketCount - 1,
+                Math.floor(((lineNum - 1) / totalLines) * bucketCount));
+            let byType = buckets.get(bucketIdx);
+            if (!byType) { byType = {}; buckets.set(bucketIdx, byType); }
+            if (byType[diff.type] === undefined) byType[diff.type] = idx;
+        }
 
         const leftFrag = document.createDocumentFragment();
         const rightFrag = document.createDocumentFragment();
 
-        differences.forEach((diff, idx) => {
-            const lineNum = diff.leftLine || diff.rightLine || 1;
-            const position = (lineNum / totalLines) * 100;
-
-            const createMarker = () => {
-                const marker = document.createElement('div');
-                marker.className = `minimap-marker ${diff.type}`;
-                marker.style.top = `${position}%`;
-                marker.dataset.idx = idx;
-                return marker;
-            };
-
-            leftFrag.appendChild(createMarker());
-            rightFrag.appendChild(createMarker());
-        });
+        for (const [bucketIdx, byType] of buckets) {
+            const position = (bucketIdx / bucketCount) * 100;
+            for (const type in byType) {
+                const firstIdx = byType[type];
+                const createMarker = () => {
+                    const marker = document.createElement('div');
+                    marker.className = `minimap-marker ${type}`;
+                    marker.style.top = `${position}%`;
+                    marker.dataset.idx = firstIdx;
+                    return marker;
+                };
+                leftFrag.appendChild(createMarker());
+                rightFrag.appendChild(createMarker());
+            }
+        }
 
         leftMinimap.appendChild(leftFrag);
         rightMinimap.appendChild(rightFrag);

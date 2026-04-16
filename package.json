@@ -1,6 +1,6 @@
 {
   "name": "textcompare",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "A modern text diff tool with side-by-side comparison, optimized LCS algorithm, and desktop support",
   "main": "electron-main.js",
   "repository": {
@@ -14,6 +14,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node src/diff-utils.test.js",
+    "lint": "eslint .",
     "build": "electron-builder",
     "build:linux": "electron-builder --linux",
     "build:win": "electron-builder --win",
@@ -39,7 +40,9 @@
   },
   "devDependencies": {
     "electron": "^41.2.0",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.39.4",
+    "globals": "^15.15.0"
   },
   "build": {
     "appId": "com.textcompare.app",
@@ -51,6 +54,7 @@
       "src/app.js",
       "src/diff-utils.js",
       "src/diff-worker.js",
+      "src/styles.css",
       "takodachi.webp"
     ],
     "linux": {

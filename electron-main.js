@@ -18,7 +18,7 @@ const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
 
 const defaultSettings = {
-  autoCheckUpdates: true
+  autoCheckUpdates: false
 };
 
 function loadSettings() {
@@ -657,6 +657,10 @@ function createWindow() {
         event.preventDefault();
       }
     });
+    // Close DevTools if opened by any other means (programmatic, menu injection, etc.)
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow.webContents.closeDevTools();
+    });
   }
 
   // Save state on window events (debounced to avoid excessive disk writes)
@@ -755,12 +759,25 @@ ipcMain.on('check-for-updates', () => {
 ipcMain.handle('get-settings', () => {
   return { ...appSettings, version: DISPLAY_VERSION };
 });
-ipcMain.handle('set-auto-update', (_, enabled) => {
+ipcMain.on('set-auto-update', (_, enabled) => {
   appSettings.autoCheckUpdates = enabled === true;
   saveSettings(appSettings);
 });
+// Allowlisted domains for shell.openExternal to prevent opening arbitrary URLs
+const OPEN_EXTERNAL_ALLOWED_HOSTS = ['github.com', 'jj-repository.github.io'];
+function isAllowedExternalUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return false;
+  try {
+    const { hostname } = new URL(url);
+    return OPEN_EXTERNAL_ALLOWED_HOSTS.some(
+      h => hostname === h || hostname.endsWith('.' + h)
+    );
+  } catch (_) {
+    return false;
+  }
+}
 ipcMain.on('open-external', (_, url) => {
-  if (typeof url === 'string' && url.startsWith('https://')) {
+  if (isAllowedExternalUrl(url)) {
     shell.openExternal(url);
   }
 });

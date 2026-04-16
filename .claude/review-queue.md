@@ -1,10 +1,11 @@
 # Review Queue — TextCompare Audit v2.5.0
 
 Generated: 2026-04-05
+Last updated: 2026-04-16 — all remaining items resolved.
 
 ## Summary
 **Total Issues**: 32 | High: 7 | Medium: 10 | Low: 15
-**Fixed**: 19 (4 high, 7 medium, 8 low) | **Remaining**: 13
+**Fixed**: 31 (7 high, 9 medium, 15 low) | **Dismissed**: 1 (M6) | **Remaining**: 0
 
 ---
 
@@ -15,9 +16,9 @@ Generated: 2026-04-05
 - **File**: electron-main.js:208-246
 - **Category**: security
 - **Description**: Downloaded exe/AppImage replaced with zero checksum/signature verification. Compromised GitHub account = arbitrary code execution.
-- **Fix**: Download checksums.txt from release, compute SHA-256, compare before replacing.
+- **Fix**: Download checksums-sha256.txt from release, compute SHA-256, compare before replacing. Implemented in fetchExpectedSha256() and computeFileSha256(); throws on mismatch.
 - **Effort**: medium
-- **Status**: [ ] open (medium effort — deferred)
+- **Status**: [x] fixed (commit 6dbdc7b)
 
 ### H2. Build workflow ships without running tests
 - **Agent**: devops-reviewer
@@ -33,9 +34,9 @@ Generated: 2026-04-05
 - **File**: src/app.js:549-553
 - **Category**: correctness
 - **Description**: Rapid compare→exit→compare causes stale worker messages and spawn overhead.
-- **Fix**: Keep worker alive. Use generation counter to discard stale results.
+- **Fix**: Keep worker alive. compareGeneration counter passed in postMessage and echoed back; onmessage discards mismatched generations. exitCompareMode bumps generation instead of terminating.
 - **Effort**: medium
-- **Status**: [ ] open (medium effort — deferred)
+- **Status**: [x] fixed
 
 ### H4. Worker silent import failure
 - **Agent**: code-quality-reviewer
@@ -69,9 +70,9 @@ Generated: 2026-04-05
 - **File**: src/diff-utils.js:44-48
 - **Category**: performance
 - **Description**: Each edit step copies entire vBuf. 50K-line files with 500 edits = 400MB.
-- **Fix**: Only store modified portion of v per step, or use linear-space Myers.
+- **Fix**: Windowed trace — each step stores only v[max-d-1..max+d+1] (size 2d+3). Total ~D^2 ints. Safety limit lowered from 10k to 3k edits. 500 edits now ≈1MB vs prior 200MB. Backtracker translates via stored offset.
 - **Effort**: medium
-- **Status**: [ ] open
+- **Status**: [x] fixed
 
 ---
 
@@ -119,8 +120,8 @@ Generated: 2026-04-05
 
 ### M9. Dependabot auto-merge lacks CI gate
 - **File**: .github/workflows/dependabot-auto-merge.yml
-- **Fix**: Ensure branch protection requires CI status check.
-- **Effort**: small (repo setting) | **Status**: [ ] open (repo setting, not code)
+- **Fix**: Workflow removed entirely. Auto-merge could execute malicious postinstall scripts during `npm install` before CI tests run; user chose manual review for all Dependabot PRs over trying to harden the auto-merge flow.
+- **Effort**: small | **Status**: [x] fixed (removed workflow)
 
 ### M10. Dead code: computeLCSSpaceOptimized never called
 - **File**: src/diff-utils.js:154-188
@@ -138,16 +139,16 @@ Generated: 2026-04-05
 - **File**: src/app.js:5 | **Fix**: Removed unused destructures | **Status**: [x] fixed
 
 ### L3. CSP allows style-src 'unsafe-inline'
-- **File**: index.html:29 | **Fix**: Extract CSS to file | **Status**: [ ] open
+- **File**: index.html:29 | **Fix**: All CSS extracted to src/styles.css. 13 inline style= attributes converted to named classes (toolbar-spacer, toolbar--compact, download-bar, modal-body, modal-row, modal-footer, modal-avatar, modal-byline, modal-version, settings-row-small, download-filename, download-bar-wrap, download-percent). CSP tightened to `style-src 'self'`. | **Status**: [x] fixed
 
 ### L4. img-src allows file: scheme
 - **File**: index.html:29 | **Fix**: Removed `file:` | **Status**: [x] fixed
 
 ### L5. DevTools not fully blocked in production
-- **File**: electron-main.js:585 | **Fix**: Add devtools-opened listener | **Status**: [ ] open
+- **File**: electron-main.js:585 | **Fix**: Added devtools-opened listener that immediately calls closeDevTools() in addition to the existing F12/Ctrl+Shift+I block. | **Status**: [x] fixed
 
 ### L6. shell.openExternal accepts any HTTPS URL
-- **File**: electron-main.js:697 | **Fix**: Allowlist domains | **Status**: [ ] open
+- **File**: electron-main.js:697 | **Fix**: isAllowedExternalUrl() parses URL and enforces allowlist [github.com, jj-repository.github.io] (exact or subdomain). IPC handler gates shell.openExternal through this check. | **Status**: [x] fixed
 
 ### L7. Deploy triggers on master branch too
 - **File**: .github/workflows/deploy.yml:5 | **Fix**: Removed master | **Status**: [x] fixed
@@ -159,7 +160,7 @@ Generated: 2026-04-05
 - **File**: CLAUDE.md | **Fix**: Updated to v2.05 | **Status**: [x] fixed
 
 ### L10. Minimap creates 2*N DOM elements
-- **File**: src/app.js:624-639 | **Fix**: Bucket markers | **Status**: [ ] open
+- **File**: src/app.js:624-639 | **Fix**: Bucketed rendering — minimap height divided into MINIMAP_BUCKET_PX-wide buckets; each bucket emits at most one marker per diff type (added/removed/modified). Click targets first diff in bucket. DOM size bounded regardless of diff count. | **Status**: [x] fixed
 
 ### L11. updateLineNumbers iterates chars manually
 - **File**: src/app.js:236 | **Fix**: Uses split('\n').length now | **Status**: [x] fixed
@@ -168,13 +169,13 @@ Generated: 2026-04-05
 - **File**: src/diff-utils.js:6,18 | **Fix**: Renamed to LCS_FULL_MATRIX_MAX_CELLS | **Status**: [x] fixed
 
 ### L13. setAutoUpdate uses invoke for fire-and-forget
-- **File**: preload.js:22 | **Fix**: Switch to send/on | **Status**: [ ] open
+- **File**: preload.js:22 | **Fix**: preload switched to ipcRenderer.send; electron-main switched to ipcMain.on. No return value expected or used on renderer side. | **Status**: [x] fixed
 
 ### L14. No linting in CI
-- **File**: .github/workflows/ci.yml | **Fix**: Add ESLint | **Status**: [ ] open
+- **File**: .github/workflows/ci.yml | **Fix**: Added `npm run lint` step; eslint.config.js with 9.x flat config; rules no-undef/no-var/prefer-const/eqeqeq + per-file env (node for main/preload, browser for app, worker for diff-worker). 0 errors, 7 warnings on current tree. | **Status**: [x] fixed
 
 ### L15. No artifact attestation for release binaries
-- **File**: .github/workflows/build-executables.yml | **Fix**: Add attest-build-provenance | **Status**: [ ] open
+- **File**: .github/workflows/build-executables.yml | **Fix**: actions/attest-build-provenance@v2 added to release job with id-token:write + attestations:write permissions; attests all .AppImage and .exe artifacts. | **Status**: [x] fixed
 
 ---
 

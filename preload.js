@@ -19,6 +19,6 @@ contextBridge.exposeInMainWorld('electron', {
     };
   },
   getSettings: () => ipcRenderer.invoke('get-settings'),
-  setAutoUpdate: (enabled) => ipcRenderer.invoke('set-auto-update', enabled),
+  setAutoUpdate: (enabled) => ipcRenderer.send('set-auto-update', enabled),
   openExternal: (url) => ipcRenderer.send('open-external', url),
 });

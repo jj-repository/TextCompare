@@ -25,7 +25,9 @@ function computeLCSOptimized(a, b) {
 
 /**
  * Myers' O(ND) diff algorithm — optimal for sequences with few differences.
- * Time: O((m+n)*D) where D = number of edits. Space: O(D*(m+n)) for trace.
+ * Time: O((m+n)*D) where D = number of edits.
+ * Space: O(D^2) — each trace stores only the relevant window [max-d-1, max+d+1]
+ *        of the v array (width 2d+3) instead of the full m+n array.
  * Falls back to empty sentinel if D exceeds safety limit.
  * @param {Array} a - First sequence
  * @param {Array} b - Second sequence
@@ -37,18 +39,22 @@ function computeMyersDiff(a, b) {
 
     if (max === 0) return { type: 'myers', matches: [], m: 0, n: 0 };
 
-    // Safety limit: bail if edit distance is too large (prevents unbounded memory)
-    const maxD = Math.min(max, 10000);
+    // Safety limit: bail if edit distance is too large (prevents unbounded memory).
+    // With delta-trace storage total memory is ~D^2 ints, so 3000 → ~36MB.
+    const maxD = Math.min(max, 3000);
 
     const size = 2 * max + 1;
     const vBuf = new Int32Array(size);
     vBuf[max + 1] = 0;
 
-    // Store traces for backtracking (one v snapshot per edit step)
+    // Store windowed trace snapshots — only the [max-d-1, max+d+1] slice the
+    // backtracker actually reads. Each entry is the slice of v at the start
+    // of step d; backtrack translates global index via the stored offset.
     const traces = [];
 
     for (let d = 0; d <= maxD; d++) {
-        traces.push(vBuf.slice());
+        const offset = max - d - 1;
+        traces.push(vBuf.slice(offset, max + d + 2));
 
         for (let k = -d; k <= d; k += 2) {
             let x;
@@ -80,25 +86,27 @@ function computeMyersDiff(a, b) {
 }
 
 /**
- * Backtrack Myers trace to extract matching positions
+ * Backtrack Myers trace to extract matching positions.
+ * Each traces[d] is the windowed v-slice for step d with offset (max - d - 1).
  */
 function backtrackMyers(traces, a, b, numEdits, max) {
     const matches = [];
     let x = a.length, y = b.length;
 
     for (let d = numEdits; d > 0; d--) {
-        // traces[d] = v state before processing d = state after d-1
-        const v = traces[d];
+        const slice = traces[d];
+        const offset = max - d - 1;
+        const vAt = (idx) => slice[idx - offset];
         const k = x - y;
 
         let prevK;
-        if (k === -d || (k !== d && v[max + k - 1] < v[max + k + 1])) {
+        if (k === -d || (k !== d && vAt(max + k - 1) < vAt(max + k + 1))) {
             prevK = k + 1;
         } else {
             prevK = k - 1;
         }
 
-        const prevX = v[max + prevK];
+        const prevX = vAt(max + prevK);
         const prevY = prevX - prevK;
 
         // Collect diagonal matches (backwards)
