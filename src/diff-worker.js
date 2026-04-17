@@ -151,8 +151,8 @@ function escapeHtml(text) {
 
 function diffChars(left, right) {
     if (left === right) return { left: escapeHtml(left), right: escapeHtml(right) };
-    if (!left && right) return { left: '<span class="diff-char-missing"></span>', right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>' };
-    if (left && !right) return { left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>', right: '<span class="diff-char-missing"></span>' };
+    if (!left && right) return { left: `<span class="diff-char-missing" style="min-width:${right.length}ch"></span>`, right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>' };
+    if (left && !right) return { left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>', right: `<span class="diff-char-missing" style="min-width:${left.length}ch"></span>` };
 
     if (left.length + right.length > 500) {
         return {
@@ -181,12 +181,12 @@ function diffChars(left, right) {
             if (leftChunk) {
                 leftHtml += '<span class="diff-char-changed">' + escapeHtml(leftChunk) + '</span>';
             } else if (rightChunk) {
-                leftHtml += '<span class="diff-char-missing"></span>';
+                leftHtml += `<span class="diff-char-missing" style="min-width:${rightChunk.length}ch"></span>`;
             }
             if (rightChunk) {
                 rightHtml += '<span class="diff-char-changed">' + escapeHtml(rightChunk) + '</span>';
             } else if (leftChunk) {
-                rightHtml += '<span class="diff-char-missing"></span>';
+                rightHtml += `<span class="diff-char-missing" style="min-width:${leftChunk.length}ch"></span>`;
             }
         }
     }

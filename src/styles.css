@@ -279,7 +279,7 @@ body {
 .diff-char-missing {
     background: rgba(218, 54, 51, 0.35);
     display: inline-block;
-    min-width: 8px;
+    min-width: 1ch;
     height: 1em;
     vertical-align: text-bottom;
     border-radius: 1px;
