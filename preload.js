@@ -21,4 +21,5 @@ contextBridge.exposeInMainWorld('electron', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   setAutoUpdate: (enabled) => ipcRenderer.send('set-auto-update', enabled),
   openExternal: (url) => ipcRenderer.send('open-external', url),
+  saveFile: (filePath, defaultName, content) => ipcRenderer.invoke('save-file', { filePath, defaultName, content }),
 });

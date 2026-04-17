@@ -781,6 +781,26 @@ ipcMain.on('open-external', (_, url) => {
     shell.openExternal(url);
   }
 });
+ipcMain.handle('save-file', async (_, { filePath, defaultName, content }) => {
+  let targetPath = filePath;
+  if (!targetPath) {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName || 'file.txt',
+      filters: [
+        { name: 'Text Files', extensions: ['txt', 'md', 'csv', 'log', 'json', 'xml', 'html', 'js', 'ts', 'css'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    targetPath = result.filePath;
+  }
+  try {
+    fs.writeFileSync(targetPath, content, 'utf8');
+    return { success: true, filePath: targetPath };
+  } catch (err) {
+    return { success: false, canceled: false, error: err.message };
+  }
+});
 
 // Prevent unhandled rejections from crashing the process
 process.on('unhandledRejection', (reason) => {

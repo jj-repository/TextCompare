@@ -26,6 +26,8 @@
     let isCompareMode = false;
     let isComparing = false;
     let lastFocusedTextarea = null;
+    let leftFilePath = null;
+    let rightFilePath = null;
 
     // DOM Elements
     const leftText = document.getElementById('leftText');
@@ -297,9 +299,11 @@
             if (side === 'left') {
                 leftText.value = text;
                 leftFilename.textContent = file.name;
+                leftFilePath = file.path || null;
             } else {
                 rightText.value = text;
                 rightFilename.textContent = file.name;
+                rightFilePath = file.path || null;
             }
             updateLineNumbers(side);
             updateStatus();
@@ -332,40 +336,24 @@
     }
 
     // Save file
-    function saveFile(side) {
+    async function saveFile(side) {
         const text = side === 'left' ? leftText.value : rightText.value;
         const filenameEl = side === 'left' ? leftFilename : rightFilename;
-        let filename = filenameEl.textContent;
+        const filePath = side === 'left' ? leftFilePath : rightFilePath;
+        const defaultName = filenameEl.textContent === 'No file loaded' ? '' : filenameEl.textContent;
 
-        if (filename === 'No file loaded' || !filename) {
-            filename = side === 'left' ? 'left_text.txt' : 'right_text.txt';
+        if (!window.electron?.saveFile) return;
+
+        const result = await window.electron.saveFile(filePath, defaultName, text);
+        if (result.success) {
+            if (side === 'left') leftFilePath = result.filePath;
+            else rightFilePath = result.filePath;
+            const name = result.filePath.split(/[/\\]/).pop();
+            filenameEl.textContent = name;
+            statusCenter.textContent = `Saved: ${name}`;
+        } else if (!result.canceled) {
+            statusCenter.textContent = `Save failed: ${result.error}`;
         }
-
-        const newFilename = prompt('Save as:', filename);
-        if (!newFilename) return;
-
-        const sanitizedFilename = newFilename
-            .replace(/[/\\]/g, '_')
-            .replace(/[<>:"|?*\x00-\x1f]/g, '_')
-            .trim();
-
-        if (!sanitizedFilename) {
-            statusCenter.textContent = 'Error: Invalid filename';
-            return;
-        }
-
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = sanitizedFilename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        filenameEl.textContent = sanitizedFilename;
-        statusCenter.textContent = `Saved: ${sanitizedFilename}`;
     }
 
     // Clear functions
@@ -373,9 +361,11 @@
         if (side === 'left') {
             leftText.value = '';
             leftFilename.textContent = 'No file loaded';
+            leftFilePath = null;
         } else {
             rightText.value = '';
             rightFilename.textContent = 'No file loaded';
+            rightFilePath = null;
         }
         updateLineNumbers(side);
         updateStatus();
@@ -391,12 +381,15 @@
     function swapPanels() {
         const tempText = leftText.value;
         const tempFilenameText = leftFilename.textContent;
+        const tempPath = leftFilePath;
 
         leftText.value = rightText.value;
         leftFilename.textContent = rightFilename.textContent;
+        leftFilePath = rightFilePath;
 
         rightText.value = tempText;
         rightFilename.textContent = tempFilenameText;
+        rightFilePath = tempPath;
 
         updateLineNumbers('left');
         updateLineNumbers('right');
