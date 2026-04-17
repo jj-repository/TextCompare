@@ -836,21 +836,24 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_, __, callback) => {
     callback(false);
   });
-  // Clean up leftover update artifacts (only match app-specific files)
-  try {
-    const exeDir = path.dirname(process.execPath);
-    const exeName = path.basename(process.execPath);
-    for (const file of fs.readdirSync(exeDir)) {
-      if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.bat$/.test(file)) {
-        try { fs.unlinkSync(path.join(exeDir, file)); } catch (_) {}
-      }
-    }
-  } catch (_) {}
 
   // Load settings before creating window
   appSettings = loadSettings();
 
   createWindow();
+
+  // Clean up leftover update artifacts off the startup critical path
+  setImmediate(() => {
+    try {
+      const exeDir = path.dirname(process.execPath);
+      const exeName = path.basename(process.execPath);
+      for (const file of fs.readdirSync(exeDir)) {
+        if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.bat$/.test(file)) {
+          try { fs.unlinkSync(path.join(exeDir, file)); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  });
 
   // Check for updates on startup if enabled (with delay)
   if (appSettings.autoCheckUpdates) {
