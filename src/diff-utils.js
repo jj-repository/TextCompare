@@ -186,6 +186,29 @@ function backtrackLCS(lcsResult, a, b) {
     }
 
     result.reverse();
+
+    // Shift each match as early as possible. The LCS backtracker sometimes picks
+    // a later occurrence of a repeated character (e.g. the 2nd space) when an
+    // earlier one at the same logical position produces a cleaner visual diff.
+    for (let idx = 0; idx < result.length; idx++) {
+        const m = result[idx];
+        const prevLeft  = idx > 0 ? result[idx - 1].left  : -1;
+        const prevRight = idx > 0 ? result[idx - 1].right : -1;
+        const nextLeft  = idx < result.length - 1 ? result[idx + 1].left  : a.length;
+        const nextRight = idx < result.length - 1 ? result[idx + 1].right : b.length;
+        const ch = a[m.left];
+        let fl = m.left, fr = m.right;
+        outer: for (let l = prevLeft + 1; l <= m.left; l++) {
+            if (a[l] !== ch || l >= nextLeft) continue;
+            for (let r = prevRight + 1; r <= m.right; r++) {
+                if (b[r] !== ch || r >= nextRight) continue;
+                fl = l; fr = r;
+                break outer;
+            }
+        }
+        if (fl !== m.left || fr !== m.right) result[idx] = { type: 'equal', left: fl, right: fr };
+    }
+
     return result;
 }
 
