@@ -4,9 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 
-const BENCHMARK_MODE = process.env.BENCHMARK_MODE === '1';
-const _BENCH_START = BENCHMARK_MODE ? Date.now() : 0;
-
 let mainWindow;
 
 // Version and Update Constants
@@ -650,12 +647,6 @@ function createWindow() {
     app.quit();
   });
 
-  if (BENCHMARK_MODE) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      process.stdout.write((Date.now() - _BENCH_START) + '\n');
-      app.quit();
-    });
-  }
 
   // Block DevTools in production builds (packaged apps)
   if (app.isPackaged) {
