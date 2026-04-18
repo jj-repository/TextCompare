@@ -149,45 +149,40 @@ function escapeHtml(text) {
     return text.replace(HTML_ESCAPE_RE, ch => HTML_ESCAPE_MAP[ch]);
 }
 
+// Positional character-level diff: left[i] vs right[i]. Tail overhang on the
+// longer side is marked added/removed. No LCS — literal index-by-index.
 function diffChars(left, right) {
     if (left === right) return { left: escapeHtml(left), right: escapeHtml(right) };
     if (!left && right) return { left: `<span class="diff-char-missing" style="min-width:${right.length}ch"></span>`, right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>' };
     if (left && !right) return { left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>', right: `<span class="diff-char-missing" style="min-width:${left.length}ch"></span>` };
 
-    if (left.length + right.length > 500) {
-        return {
-            left: '<span class="diff-char-changed">' + escapeHtml(left) + '</span>',
-            right: '<span class="diff-char-changed">' + escapeHtml(right) + '</span>'
-        };
-    }
-
-    const leftChars = left.split('');
-    const rightChars = right.split('');
-    const lcsResult = computeLCSOptimized(leftChars, rightChars);
-    const lcs = backtrackLCS(lcsResult, leftChars, rightChars);
-
+    const maxLen = Math.max(left.length, right.length);
     let leftHtml = '', rightHtml = '';
-    let li = 0, ri = 0, lcsIdx = 0;
+    let i = 0;
 
-    while (li < left.length || ri < right.length) {
-        if (lcsIdx < lcs.length && li === lcs[lcsIdx].left && ri === lcs[lcsIdx].right) {
-            leftHtml += escapeHtml(left[li]);
-            rightHtml += escapeHtml(right[ri]);
-            li++; ri++; lcsIdx++;
+    while (i < maxLen) {
+        const start = i;
+        const bothIn = i < left.length && i < right.length;
+
+        if (bothIn && left[i] === right[i]) {
+            while (i < left.length && i < right.length && left[i] === right[i]) i++;
+            const seg = left.slice(start, i);
+            leftHtml += escapeHtml(seg);
+            rightHtml += escapeHtml(seg);
+        } else if (bothIn) {
+            while (i < left.length && i < right.length && left[i] !== right[i]) i++;
+            leftHtml  += '<span class="diff-char-changed">' + escapeHtml(left.slice(start, i))  + '</span>';
+            rightHtml += '<span class="diff-char-changed">' + escapeHtml(right.slice(start, i)) + '</span>';
+        } else if (i < left.length) {
+            const seg = left.slice(start);
+            i = left.length;
+            leftHtml  += '<span class="diff-char-changed">' + escapeHtml(seg) + '</span>';
+            rightHtml += `<span class="diff-char-missing" style="min-width:${seg.length}ch"></span>`;
         } else {
-            let leftChunk = '', rightChunk = '';
-            while (li < left.length && (lcsIdx >= lcs.length || li < lcs[lcsIdx].left)) leftChunk += left[li++];
-            while (ri < right.length && (lcsIdx >= lcs.length || ri < lcs[lcsIdx].right)) rightChunk += right[ri++];
-            if (leftChunk) {
-                leftHtml += '<span class="diff-char-changed">' + escapeHtml(leftChunk) + '</span>';
-            } else if (rightChunk) {
-                leftHtml += `<span class="diff-char-missing" style="min-width:${rightChunk.length}ch"></span>`;
-            }
-            if (rightChunk) {
-                rightHtml += '<span class="diff-char-changed">' + escapeHtml(rightChunk) + '</span>';
-            } else if (leftChunk) {
-                rightHtml += `<span class="diff-char-missing" style="min-width:${leftChunk.length}ch"></span>`;
-            }
+            const seg = right.slice(start);
+            i = right.length;
+            leftHtml  += `<span class="diff-char-missing" style="min-width:${seg.length}ch"></span>`;
+            rightHtml += '<span class="diff-char-changed">' + escapeHtml(seg) + '</span>';
         }
     }
 

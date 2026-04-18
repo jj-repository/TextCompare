@@ -388,11 +388,32 @@ describe('diffChars', () => {
         expect(result.left).toContain('c');
     });
 
-    it('should bail out for long strings and mark entire line as changed', () => {
+    it('should mark every position as changed when all chars differ', () => {
         const long = 'x'.repeat(300);
         const result = diffChars(long, long.replace(/x/g, 'y'));
         expect(result.left).toContain('diff-char-changed');
         expect(result.right).toContain('diff-char-changed');
+    });
+
+    it('should compare positionally, not by subsequence (12 3 6 vs 13 4 5223 6)', () => {
+        // Left's "3" is at index 3; right[3] is "4". Positional says these differ —
+        // LCS would have matched left's "3" to right's later "3".
+        const result = diffChars('12 3    6', '13 4 5223 6');
+        // Left index 3 is '3' and must be wrapped as changed (paired with right's '4')
+        expect(result.left).toContain('<span class="diff-char-changed">');
+        // Right overhang (past left.length) uses diff-char-missing placeholder on left
+        expect(result.left).toContain('diff-char-missing');
+    });
+
+    it('should mark tail overhang on the longer side', () => {
+        const result = diffChars('abc', 'abcdef');
+        // Shared "abc" not wrapped
+        expect(result.left.startsWith('abc')).toBe(true);
+        // Right's "def" wrapped as changed
+        expect(result.right).toContain('def');
+        expect(result.right).toContain('diff-char-changed');
+        // Left side gets a missing placeholder of width 3
+        expect(result.left).toContain('min-width:3ch');
     });
 });
 
