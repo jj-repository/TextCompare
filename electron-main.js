@@ -371,8 +371,9 @@ function handleUpdateResponse(release, silent) {
           }
 
           // Trampoline: wait for this pid + the portable launcher to release
-          // the exe, delete stale .old, move current exe → .old, move .new →
-          // exe, relaunch, self-delete.
+          // the exe, back up current exe → .old, move .new → exe, self-delete.
+          // No auto-launch — SmartScreen/UAC can silently block script-initiated
+          // starts on portable builds. User reopens the app manually.
           const batPath = path.join(exeDir, `_update_${Date.now()}.bat`);
           const bat = [
             '@echo off',
@@ -387,7 +388,6 @@ function handleUpdateResponse(release, silent) {
             `if exist "${oldExePath}" del /f /q "${oldExePath}"`,
             `if exist "${exePath}" move /y "${exePath}" "${oldExePath}" >nul`,
             `move /y "${newExePath}" "${exePath}" >nul`,
-            `start "" "${exePath}"`,
             'del "%~f0"',
             ''
           ].join('\r\n');
@@ -403,8 +403,8 @@ function handleUpdateResponse(release, silent) {
             type: 'info',
             title: 'Update Ready',
             message: 'Update downloaded successfully!',
-            detail: 'The app will close and restart with the new version.',
-            buttons: ['Restart Now']
+            detail: 'Please close the app — the update will finish automatically. Then reopen it.',
+            buttons: ['Close Now']
           }).then(() => {
             app.quit();
           });
