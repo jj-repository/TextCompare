@@ -233,9 +233,12 @@ function handleUpdateResponse(release, silent) {
         return;
       }
 
-      // Download next to the running executable
-      const exePath = process.execPath;
-      const exeDir = path.dirname(exePath);
+      // Download next to the running executable.
+      // Windows portable (electron-builder target: portable) extracts to %TEMP%\<random>\
+      // at runtime, so process.execPath points there — not the folder the user placed
+      // TextCompare.exe in. PORTABLE_EXECUTABLE_FILE / _DIR expose the real location.
+      const exePath = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+      const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(exePath);
       const safeName = path.basename(asset.name).replace(/[<>:"|?*\x00-\x1f]/g, '_');
       if (!safeName || safeName === '.' || safeName === '..') {
         isUpdateInProgress = false;
@@ -836,8 +839,9 @@ app.whenReady().then(() => {
   // Clean up leftover update artifacts off the startup critical path
   setImmediate(() => {
     try {
-      const exeDir = path.dirname(process.execPath);
-      const exeName = path.basename(process.execPath);
+      const realExePath = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+      const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(realExePath);
+      const exeName = path.basename(realExePath);
       for (const file of fs.readdirSync(exeDir)) {
         if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.bat$/.test(file)) {
           try { fs.unlinkSync(path.join(exeDir, file)); } catch (_) {}
