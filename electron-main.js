@@ -324,9 +324,11 @@ function handleUpdateResponse(release, silent) {
             }
           });
         } else {
-          // Windows portable: rename-dance (current→.old, .new→current)
+          // Windows portable: always use a .bat trampoline that runs after the
+          // app exits. In-process rename of the running exe is unreliable on
+          // portable builds because the nsis launcher holds a handle on it.
           const newExePath = exePath + '.new';
-          const oldExePath = exePath.replace(/\.exe$/i, '.old');
+          const oldExePath = exePath + '.old';
 
           await downloadFile(asset.browser_download_url, newExePath, (downloaded, total) => {
             const percent = Math.round((downloaded / total) * 100);
@@ -357,60 +359,55 @@ function handleUpdateResponse(release, silent) {
             console.log(`SHA-256 verified for ${asset.name}`);
           }
 
-          try {
-            // Remove leftover .old from previous update
-            if (fs.existsSync(oldExePath)) fs.unlinkSync(oldExePath);
-            // Rename running exe → .old
-            fs.renameSync(exePath, oldExePath);
-            // Rename .new → original name
-            fs.renameSync(newExePath, exePath);
-
+          // Quote-safety: bat quoting breaks on embedded double-quotes
+          if (newExePath.includes('"') || exePath.includes('"') || oldExePath.includes('"')) {
             isUpdateInProgress = false;
             dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'Update Complete',
-              message: 'Update installed successfully!',
-              detail: 'Please reopen the app to use the new version.',
-              buttons: ['Close']
-            }).then(() => {
-              app.quit();
+              type: 'error', title: 'Update Failed',
+              message: 'Install path contains invalid characters. Please reinstall to a simple path.',
+              buttons: ['OK']
             });
-          } catch (renameErr) {
-            // Fallback: .bat trampoline runs after process exits
-            // Validate paths don't contain quotes (breaks bat quoting)
-            if (newExePath.includes('"') || exePath.includes('"')) {
-              isUpdateInProgress = false;
-              dialog.showMessageBox(mainWindow, {
-                type: 'error', title: 'Update Failed',
-                message: 'Install path contains invalid characters. Please reinstall to a simple path.',
-                buttons: ['OK']
-              });
-              return;
-            }
-            const batPath = path.join(exeDir, `_update_${Date.now()}.bat`);
-            fs.writeFileSync(batPath,
-              `:wait\r\ntasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul && ` +
-              `(timeout /t 1 /nobreak >nul & goto wait)\r\n` +
-              `move /y "${newExePath}" "${exePath}"\r\n` +
-              `del "%~f0"\r\n`
-            );
-            spawn('cmd', ['/c', batPath], {
-              detached: true,
-              stdio: 'ignore',
-              windowsHide: true
-            }).unref();
-
-            isUpdateInProgress = false;
-            dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'Update Ready',
-              message: 'Update will be applied when you close the app.',
-              detail: 'Please close and reopen the app.',
-              buttons: ['Close Now']
-            }).then(() => {
-              app.quit();
-            });
+            return;
           }
+
+          // Trampoline: wait for this pid + the portable launcher to release
+          // the exe, delete stale .old, move current exe → .old, move .new →
+          // exe, relaunch, self-delete.
+          const batPath = path.join(exeDir, `_update_${Date.now()}.bat`);
+          const bat = [
+            '@echo off',
+            ':wait',
+            `tasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul`,
+            'if not errorlevel 1 (',
+            '  timeout /t 1 /nobreak >nul',
+            '  goto wait',
+            ')',
+            'rem Give Windows a moment to release file handles from the portable launcher',
+            'timeout /t 2 /nobreak >nul',
+            `if exist "${oldExePath}" del /f /q "${oldExePath}"`,
+            `if exist "${exePath}" move /y "${exePath}" "${oldExePath}" >nul`,
+            `move /y "${newExePath}" "${exePath}" >nul`,
+            `start "" "${exePath}"`,
+            'del "%~f0"',
+            ''
+          ].join('\r\n');
+          fs.writeFileSync(batPath, bat);
+          spawn('cmd', ['/c', batPath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+          }).unref();
+
+          isUpdateInProgress = false;
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Update Ready',
+            message: 'Update downloaded successfully!',
+            detail: 'The app will close and restart with the new version.',
+            buttons: ['Restart Now']
+          }).then(() => {
+            app.quit();
+          });
         }
       } catch (err) {
         isUpdateInProgress = false;

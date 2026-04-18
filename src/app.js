@@ -161,6 +161,8 @@
                     overlay.classList.remove('active');
                     return;
                 }
+                // Close settings modal so the download popup isn't buried underneath
+                document.getElementById('settingsModal').classList.remove('active');
                 overlay.classList.add('active');
                 document.getElementById('downloadBar').style.width = data.percent + '%';
                 document.getElementById('downloadPercent').textContent = 'Downloading... ' + data.percent + '%';
