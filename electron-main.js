@@ -370,11 +370,38 @@ function handleUpdateResponse(release, silent) {
             return;
           }
 
-          // Trampoline: retry the move with backoff until the portable launcher
-          // releases the exe, then self-delete. Bounded (30 tries × 1s = ~30s)
-          // so it can never loop forever. No PID polling — Windows reuses PIDs
-          // fast and the portable launcher runs under a different PID than this
-          // process, so PID checks are unreliable.
+          // Try in-process rename first (YTD-style). Windows allows renaming a
+          // running exe if no other process holds a delete-lock on it. On most
+          // portable NSIS launchers this succeeds and no trampoline is needed.
+          // Only fall back to the bat if rename fails (EBUSY/EPERM).
+          try {
+            if (fs.existsSync(oldExePath)) fs.unlinkSync(oldExePath);
+            fs.renameSync(exePath, oldExePath);
+            try {
+              fs.renameSync(newExePath, exePath);
+            } catch (renameNewErr) {
+              try { fs.renameSync(oldExePath, exePath); } catch (_) {}
+              throw renameNewErr;
+            }
+            try { fs.unlinkSync(oldExePath); } catch (_) {}
+
+            isUpdateInProgress = false;
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Update Installed',
+              message: 'Updated to the latest version.',
+              detail: 'Please close and reopen the app to use it.',
+              buttons: ['OK']
+            });
+            return;
+          } catch (renameErr) {
+            console.log(`In-process rename failed (${renameErr.code || renameErr.message}), falling back to trampoline`);
+          }
+
+          // Fallback trampoline: bounded retry move (30 tries × 1s = ~30s).
+          // Never loops forever — no PID polling. Windows reuses PIDs fast and
+          // the portable launcher runs under a different PID than this process,
+          // so PID checks are unreliable.
           // No auto-launch — SmartScreen/UAC can silently block script-initiated
           // starts on portable builds. User reopens the app manually.
           const stamp = Date.now();
