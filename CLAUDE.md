@@ -1,7 +1,7 @@
 # TextCompare
 
 Electron desktop app for side-by-side text diff with LCS algorithm, minimap, and VS Code dark theme. Stack: Electron, vanilla JS/HTML/CSS (no frontend build step).
-v2.16
+v2.17
 
 Docs: .claude/index.md
 

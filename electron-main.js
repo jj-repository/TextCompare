@@ -370,29 +370,55 @@ function handleUpdateResponse(release, silent) {
             return;
           }
 
-          // Trampoline: wait for this pid + the portable launcher to release
-          // the exe, back up current exe → .old, move .new → exe, self-delete.
+          // Trampoline: retry the move with backoff until the portable launcher
+          // releases the exe, then self-delete. Bounded (30 tries × 1s = ~30s)
+          // so it can never loop forever. No PID polling — Windows reuses PIDs
+          // fast and the portable launcher runs under a different PID than this
+          // process, so PID checks are unreliable.
           // No auto-launch — SmartScreen/UAC can silently block script-initiated
           // starts on portable builds. User reopens the app manually.
-          const batPath = path.join(exeDir, `_update_${Date.now()}.bat`);
+          const stamp = Date.now();
+          const batPath = path.join(exeDir, `_update_${stamp}.bat`);
+          const vbsPath = path.join(exeDir, `_update_${stamp}.vbs`);
           const bat = [
             '@echo off',
-            ':wait',
-            `tasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul`,
-            'if not errorlevel 1 (',
-            '  timeout /t 1 /nobreak >nul',
-            '  goto wait',
+            'setlocal',
+            'set /a TRIES=0',
+            ':retry',
+            `if not exist "${newExePath}" goto cleanup`,
+            `if exist "${oldExePath}" del /f /q "${oldExePath}" >nul 2>&1`,
+            `move /y "${exePath}" "${oldExePath}" >nul 2>&1`,
+            'if errorlevel 1 goto backoff',
+            `move /y "${newExePath}" "${exePath}" >nul 2>&1`,
+            'if errorlevel 1 (',
+            `  move /y "${oldExePath}" "${exePath}" >nul 2>&1`,
+            '  goto backoff',
             ')',
-            'rem Give Windows a moment to release file handles from the portable launcher',
-            'timeout /t 2 /nobreak >nul',
-            `if exist "${oldExePath}" del /f /q "${oldExePath}"`,
-            `if exist "${exePath}" move /y "${exePath}" "${oldExePath}" >nul`,
-            `move /y "${newExePath}" "${exePath}" >nul`,
-            'del "%~f0"',
+            'goto cleanup',
+            ':backoff',
+            'set /a TRIES+=1',
+            'if %TRIES% geq 30 goto cleanup',
+            'ping -n 2 127.0.0.1 >nul 2>&1',
+            'goto retry',
+            ':cleanup',
+            `if exist "${oldExePath}" del /f /q "${oldExePath}" >nul 2>&1`,
+            `if exist "${newExePath}" del /f /q "${newExePath}" >nul 2>&1`,
+            `del /f /q "${vbsPath}" >nul 2>&1`,
+            '(goto) 2>nul & del "%~f0"',
+            ''
+          ].join('\r\n');
+          // VBS wrapper runs the bat with window style 0 (hidden) — this is the
+          // only reliable way to launch cmd.exe on Windows without any visible
+          // console flicker. `spawn('cmd', ..., { windowsHide: true })` is
+          // not reliable with `detached: true` on all Windows configurations.
+          const vbs = [
+            'Set s = CreateObject("Wscript.Shell")',
+            `s.Run """${batPath}""", 0, False`,
             ''
           ].join('\r\n');
           fs.writeFileSync(batPath, bat);
-          spawn('cmd', ['/c', batPath], {
+          fs.writeFileSync(vbsPath, vbs);
+          spawn('wscript.exe', [vbsPath], {
             detached: true,
             stdio: 'ignore',
             windowsHide: true
@@ -840,7 +866,7 @@ app.whenReady().then(() => {
       const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(realExePath);
       const exeName = path.basename(realExePath);
       for (const file of fs.readdirSync(exeDir)) {
-        if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.bat$/.test(file)) {
+        if ((file === exeName + '.old') || (file === exeName + '.new') || /^_update_\d+\.(bat|vbs)$/.test(file)) {
           try { fs.unlinkSync(path.join(exeDir, file)); } catch (_) {}
         }
       }
