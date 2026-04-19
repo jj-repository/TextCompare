@@ -120,3 +120,13 @@ jobs:
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepend download disclaimer to release notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          DISCLAIMER=$'## 📥 Downloads\n\n**Just grab one file:**\n- **Windows** → `TextCompare.exe`\n- **Linux** → `TextCompare-Linux.AppImage`\n\nThe `checksums-sha256.txt` file is an optional checksum for verifying the download — you don\'t need it to use the app.\n\n---\n\n'
+          BODY=$(gh release view "$TAG" --json body -q .body)
+          printf '%s%s' "$DISCLAIMER" "$BODY" > /tmp/release_notes.md
+          gh release edit "$TAG" --notes-file /tmp/release_notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
