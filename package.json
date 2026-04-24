@@ -39,10 +39,10 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "electron": "^41.2.0",
+    "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
-    "eslint": "^9.39.4",
-    "globals": "^15.15.0"
+    "eslint": "^10.2.1",
+    "globals": "^17.5.0"
   },
   "build": {
     "appId": "com.textcompare.app",
